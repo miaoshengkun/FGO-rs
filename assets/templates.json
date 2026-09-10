@@ -1,0 +1,1682 @@
+{
+  "master_result": {
+    "file": "live/master-result.png",
+    "region": {
+      "x": 660,
+      "y": 170,
+      "width": 200,
+      "height": 70
+    },
+    "threshold": 0.05
+  },
+  "bond_result": {
+    "file": "live/bond-result.png",
+    "region": {
+      "x": 90,
+      "y": 155,
+      "width": 230,
+      "height": 65
+    },
+    "threshold": 0.05
+  },
+  "target_header": {
+    "file": "live/target-header.png",
+    "region": {
+      "x": 540,
+      "y": 160,
+      "width": 210,
+      "height": 70
+    },
+    "threshold": 0.05
+  },
+  "enemy_details": {
+    "file": "live/enemy-details.png",
+    "region": {
+      "x": 530,
+      "y": 160,
+      "width": 230,
+      "height": 70
+    },
+    "threshold": 0.05
+  },
+  "formation_support120": {
+    "file": "live/formation-support120.png",
+    "region": {
+      "x": 443,
+      "y": 522,
+      "width": 55,
+      "height": 32
+    },
+    "threshold": 0.05
+  },
+  "quest_confirm": {
+    "file": "live/quest-confirm.png",
+    "region": {
+      "x": 420,
+      "y": 95,
+      "width": 460,
+      "height": 50
+    },
+    "threshold": 0.05
+  },
+  "refresh_confirm": {
+    "file": "live/refresh-confirm.png",
+    "region": {
+      "x": 350,
+      "y": 300,
+      "width": 550,
+      "height": 80
+    },
+    "threshold": 0.05
+  },
+  "formation": {
+    "file": "common/battlebegin.png",
+    "region": {
+      "x": 1070,
+      "y": 632,
+      "width": 200,
+      "height": 78
+    },
+    "threshold": 0.05
+  },
+  "ap_empty": {
+    "file": "common/apempty.png",
+    "region": {
+      "x": 522,
+      "y": 582,
+      "width": 236,
+      "height": 70
+    },
+    "threshold": 0.05
+  },
+  "repeat": {
+    "file": "common/battlecontinue.png",
+    "region": {
+      "x": 704,
+      "y": 530,
+      "width": 272,
+      "height": 88
+    },
+    "threshold": 0.05
+  },
+  "add_friend": {
+    "file": "common/addfriend.png",
+    "region": {
+      "x": 161,
+      "y": 574,
+      "width": 338,
+      "height": 82
+    },
+    "threshold": 0.05
+  },
+  "main_menu": {
+    "file": "common/menu.png",
+    "region": {
+      "x": 1104,
+      "y": 613,
+      "width": 163,
+      "height": 63
+    },
+    "threshold": 0.05
+  },
+  "special_drop": {
+    "file": "common/close.png",
+    "region": {
+      "x": 6,
+      "y": 14,
+      "width": 22,
+      "height": 54
+    },
+    "threshold": 0.05
+  },
+  "support_scroll": {
+    "file": "common/listbar.png",
+    "region": {
+      "x": 1236,
+      "y": 0,
+      "width": 38,
+      "height": 720
+    },
+    "threshold": 0.05
+  },
+  "skill_error": {
+    "file": "common/skillerror.png",
+    "region": {
+      "x": 504,
+      "y": 528,
+      "width": 272,
+      "height": 69
+    },
+    "threshold": 0.05
+  },
+  "skill_none_1": {
+    "file": "common/cross.png",
+    "region": {
+      "x": 1070,
+      "y": 45,
+      "width": 35,
+      "height": 34
+    },
+    "threshold": 0.05
+  },
+  "skill_none_2": {
+    "file": "common/cross.png",
+    "region": {
+      "x": 1093,
+      "y": 164,
+      "width": 33,
+      "height": 32
+    },
+    "threshold": 0.05
+  },
+  "target_cross": {
+    "file": "common/cross.png",
+    "region": {
+      "x": 980,
+      "y": 0,
+      "width": 300,
+      "height": 300
+    },
+    "threshold": 0.05
+  },
+  "victory": {
+    "file": "cn/dropitem.png",
+    "region": {
+      "x": 110,
+      "y": 30,
+      "width": 154,
+      "height": 46
+    },
+    "threshold": 0.05
+  },
+  "defeated": {
+    "file": "cn/defeated.png",
+    "region": {
+      "x": 603,
+      "y": 100,
+      "width": 87,
+      "height": 76
+    },
+    "threshold": 0.05
+  },
+  "skill_cd_1_1": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 35,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "skill_cd_1_2": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 123,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "skill_cd_1_3": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 211,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "master_cd_1": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 857,
+      "y": 324,
+      "width": 45,
+      "height": 29
+    },
+    "threshold": 0.2
+  },
+  "np_sealed_1": {
+    "file": "cn/hougusealed.png",
+    "region": {
+      "x": 313,
+      "y": 172,
+      "width": 202,
+      "height": 86
+    },
+    "threshold": 0.52
+  },
+  "np_chara_sealed_1": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 313,
+      "y": 172,
+      "width": 202,
+      "height": 86
+    },
+    "threshold": 0.52
+  },
+  "skill_cd_2_1": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 353,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "skill_cd_2_2": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 441,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "skill_cd_2_3": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 529,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "master_cd_2": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 947,
+      "y": 324,
+      "width": 45,
+      "height": 29
+    },
+    "threshold": 0.2
+  },
+  "np_sealed_2": {
+    "file": "cn/hougusealed.png",
+    "region": {
+      "x": 544,
+      "y": 172,
+      "width": 202,
+      "height": 86
+    },
+    "threshold": 0.52
+  },
+  "np_chara_sealed_2": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 544,
+      "y": 172,
+      "width": 202,
+      "height": 86
+    },
+    "threshold": 0.52
+  },
+  "skill_cd_3_1": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 671,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "skill_cd_3_2": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 759,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "skill_cd_3_3": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 847,
+      "y": 598,
+      "width": 20,
+      "height": 20
+    },
+    "threshold": 0.2
+  },
+  "master_cd_3": {
+    "file": "cn/still.png",
+    "region": {
+      "x": 1037,
+      "y": 324,
+      "width": 45,
+      "height": 29
+    },
+    "threshold": 0.2
+  },
+  "np_sealed_3": {
+    "file": "cn/hougusealed.png",
+    "region": {
+      "x": 775,
+      "y": 172,
+      "width": 202,
+      "height": 86
+    },
+    "threshold": 0.52
+  },
+  "np_chara_sealed_3": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 775,
+      "y": 172,
+      "width": 202,
+      "height": 86
+    },
+    "threshold": 0.52
+  },
+  "arts_1": {
+    "file": "cn/arts.png",
+    "region": {
+      "x": 80,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_arts_1": {
+    "file": "common/cardsealedarts.png",
+    "region": {
+      "x": 44,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "quick_1": {
+    "file": "cn/quick.png",
+    "region": {
+      "x": 80,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_quick_1": {
+    "file": "common/cardsealedquick.png",
+    "region": {
+      "x": 44,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "buster_1": {
+    "file": "cn/buster.png",
+    "region": {
+      "x": 80,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_buster_1": {
+    "file": "common/cardsealedbuster.png",
+    "region": {
+      "x": 44,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "chara_sealed_1": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 76,
+      "y": 479,
+      "width": 149,
+      "height": 54
+    },
+    "threshold": 0.3
+  },
+  "weak_1": {
+    "file": "common/weak.png",
+    "region": {
+      "x": 180,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "resist_1": {
+    "file": "common/resist.png",
+    "region": {
+      "x": 180,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "critical_1_1": {
+    "file": "common/critical1.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_2_1": {
+    "file": "common/critical2.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_3_1": {
+    "file": "common/critical3.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_4_1": {
+    "file": "common/critical4.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_5_1": {
+    "file": "common/critical5.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_6_1": {
+    "file": "common/critical6.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_7_1": {
+    "file": "common/critical7.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_8_1": {
+    "file": "common/critical8.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_9_1": {
+    "file": "common/critical9.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_10_1": {
+    "file": "common/critical0.png",
+    "region": {
+      "x": 76,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "arts_2": {
+    "file": "cn/arts.png",
+    "region": {
+      "x": 337,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_arts_2": {
+    "file": "common/cardsealedarts.png",
+    "region": {
+      "x": 301,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "quick_2": {
+    "file": "cn/quick.png",
+    "region": {
+      "x": 337,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_quick_2": {
+    "file": "common/cardsealedquick.png",
+    "region": {
+      "x": 301,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "buster_2": {
+    "file": "cn/buster.png",
+    "region": {
+      "x": 337,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_buster_2": {
+    "file": "common/cardsealedbuster.png",
+    "region": {
+      "x": 301,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "chara_sealed_2": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 333,
+      "y": 479,
+      "width": 149,
+      "height": 54
+    },
+    "threshold": 0.3
+  },
+  "weak_2": {
+    "file": "common/weak.png",
+    "region": {
+      "x": 437,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "resist_2": {
+    "file": "common/resist.png",
+    "region": {
+      "x": 437,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "critical_1_2": {
+    "file": "common/critical1.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_2_2": {
+    "file": "common/critical2.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_3_2": {
+    "file": "common/critical3.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_4_2": {
+    "file": "common/critical4.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_5_2": {
+    "file": "common/critical5.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_6_2": {
+    "file": "common/critical6.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_7_2": {
+    "file": "common/critical7.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_8_2": {
+    "file": "common/critical8.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_9_2": {
+    "file": "common/critical9.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_10_2": {
+    "file": "common/critical0.png",
+    "region": {
+      "x": 333,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "arts_3": {
+    "file": "cn/arts.png",
+    "region": {
+      "x": 594,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_arts_3": {
+    "file": "common/cardsealedarts.png",
+    "region": {
+      "x": 558,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "quick_3": {
+    "file": "cn/quick.png",
+    "region": {
+      "x": 594,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_quick_3": {
+    "file": "common/cardsealedquick.png",
+    "region": {
+      "x": 558,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "buster_3": {
+    "file": "cn/buster.png",
+    "region": {
+      "x": 594,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_buster_3": {
+    "file": "common/cardsealedbuster.png",
+    "region": {
+      "x": 558,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "chara_sealed_3": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 590,
+      "y": 479,
+      "width": 149,
+      "height": 54
+    },
+    "threshold": 0.3
+  },
+  "weak_3": {
+    "file": "common/weak.png",
+    "region": {
+      "x": 694,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "resist_3": {
+    "file": "common/resist.png",
+    "region": {
+      "x": 694,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "critical_1_3": {
+    "file": "common/critical1.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_2_3": {
+    "file": "common/critical2.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_3_3": {
+    "file": "common/critical3.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_4_3": {
+    "file": "common/critical4.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_5_3": {
+    "file": "common/critical5.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_6_3": {
+    "file": "common/critical6.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_7_3": {
+    "file": "common/critical7.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_8_3": {
+    "file": "common/critical8.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_9_3": {
+    "file": "common/critical9.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_10_3": {
+    "file": "common/critical0.png",
+    "region": {
+      "x": 590,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "arts_4": {
+    "file": "cn/arts.png",
+    "region": {
+      "x": 851,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_arts_4": {
+    "file": "common/cardsealedarts.png",
+    "region": {
+      "x": 815,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "quick_4": {
+    "file": "cn/quick.png",
+    "region": {
+      "x": 851,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_quick_4": {
+    "file": "common/cardsealedquick.png",
+    "region": {
+      "x": 815,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "buster_4": {
+    "file": "cn/buster.png",
+    "region": {
+      "x": 851,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_buster_4": {
+    "file": "common/cardsealedbuster.png",
+    "region": {
+      "x": 815,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "chara_sealed_4": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 847,
+      "y": 479,
+      "width": 149,
+      "height": 54
+    },
+    "threshold": 0.3
+  },
+  "weak_4": {
+    "file": "common/weak.png",
+    "region": {
+      "x": 951,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "resist_4": {
+    "file": "common/resist.png",
+    "region": {
+      "x": 951,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "critical_1_4": {
+    "file": "common/critical1.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_2_4": {
+    "file": "common/critical2.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_3_4": {
+    "file": "common/critical3.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_4_4": {
+    "file": "common/critical4.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_5_4": {
+    "file": "common/critical5.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_6_4": {
+    "file": "common/critical6.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_7_4": {
+    "file": "common/critical7.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_8_4": {
+    "file": "common/critical8.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_9_4": {
+    "file": "common/critical9.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_10_4": {
+    "file": "common/critical0.png",
+    "region": {
+      "x": 847,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "arts_5": {
+    "file": "cn/arts.png",
+    "region": {
+      "x": 1108,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_arts_5": {
+    "file": "common/cardsealedarts.png",
+    "region": {
+      "x": 1072,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "quick_5": {
+    "file": "cn/quick.png",
+    "region": {
+      "x": 1108,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_quick_5": {
+    "file": "common/cardsealedquick.png",
+    "region": {
+      "x": 1072,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "buster_5": {
+    "file": "cn/buster.png",
+    "region": {
+      "x": 1108,
+      "y": 537,
+      "width": 51,
+      "height": 44
+    },
+    "threshold": 0.2
+  },
+  "sealed_buster_5": {
+    "file": "common/cardsealedbuster.png",
+    "region": {
+      "x": 1072,
+      "y": 492,
+      "width": 24,
+      "height": 36
+    },
+    "threshold": 0.14
+  },
+  "chara_sealed_5": {
+    "file": "cn/charasealed.png",
+    "region": {
+      "x": 1104,
+      "y": 479,
+      "width": 149,
+      "height": 54
+    },
+    "threshold": 0.3
+  },
+  "weak_5": {
+    "file": "common/weak.png",
+    "region": {
+      "x": 1208,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "resist_5": {
+    "file": "common/resist.png",
+    "region": {
+      "x": 1208,
+      "y": 318,
+      "width": 46,
+      "height": 99
+    },
+    "threshold": 0.2
+  },
+  "critical_1_5": {
+    "file": "common/critical1.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_2_5": {
+    "file": "common/critical2.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_3_5": {
+    "file": "common/critical3.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_4_5": {
+    "file": "common/critical4.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_5_5": {
+    "file": "common/critical5.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_6_5": {
+    "file": "common/critical6.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_7_5": {
+    "file": "common/critical7.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_8_5": {
+    "file": "common/critical8.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_9_5": {
+    "file": "common/critical9.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "critical_10_5": {
+    "file": "common/critical0.png",
+    "region": {
+      "x": 1104,
+      "y": 350,
+      "width": 37,
+      "height": 55
+    },
+    "threshold": 0.06
+  },
+  "event": {
+    "file": "rider/event.png",
+    "region": {
+      "x": 990,
+      "y": 0,
+      "width": 290,
+      "height": 65
+    },
+    "threshold": 0.055
+  },
+  "quest": {
+    "file": "rider/quest.png",
+    "region": {
+      "x": 740,
+      "y": 95,
+      "width": 360,
+      "height": 485
+    },
+    "threshold": 0.055
+  },
+  "rider_tab": {
+    "file": "rider/riderTab.png",
+    "region": {
+      "x": 322,
+      "y": 86,
+      "width": 84,
+      "height": 83
+    },
+    "threshold": 0.055
+  },
+  "level120": {
+    "file": "rider/level120.png",
+    "region": {
+      "x": 65,
+      "y": 175,
+      "width": 153,
+      "height": 515
+    },
+    "threshold": 0.035
+  },
+  "friend": {
+    "file": "rider/friend.png",
+    "region": {
+      "x": 1100,
+      "y": 175,
+      "width": 90,
+      "height": 545
+    },
+    "threshold": 0.07
+  },
+  "first_turn": {
+    "file": "rider/firstTurn.png",
+    "region": {
+      "x": 847,
+      "y": 78,
+      "width": 107,
+      "height": 37
+    },
+    "threshold": 0.035
+  },
+  "order_change": {
+    "file": "rider/orderChange.png",
+    "region": {
+      "x": 350,
+      "y": 140,
+      "width": 590,
+      "height": 54
+    },
+    "threshold": 0.055
+  },
+  "master_ready": {
+    "file": "rider/masterPanelReady.png",
+    "region": {
+      "x": 1044,
+      "y": 272,
+      "width": 84,
+      "height": 52
+    },
+    "threshold": 0.09
+  },
+  "master_used": {
+    "file": "rider/masterPanelUsed.png",
+    "region": {
+      "x": 1044,
+      "y": 272,
+      "width": 84,
+      "height": 52
+    },
+    "threshold": 0.09
+  },
+  "iskandar": {
+    "file": "rider/iskandar.png",
+    "region": {
+      "x": 120,
+      "y": 416,
+      "width": 87,
+      "height": 88
+    },
+    "threshold": 0.1
+  },
+  "reines": {
+    "file": "rider/reines.png",
+    "region": {
+      "x": 120,
+      "y": 416,
+      "width": 87,
+      "height": 88
+    },
+    "threshold": 0.1
+  },
+  "taigong": {
+    "file": "rider/taigong.png",
+    "region": {
+      "x": 438,
+      "y": 416,
+      "width": 87,
+      "height": 88
+    },
+    "threshold": 0.1
+  },
+  "selected_1": {
+    "file": "rider/selected.png",
+    "region": {
+      "x": 95,
+      "y": 145,
+      "width": 83,
+      "height": 105
+    },
+    "threshold": 0.1
+  },
+  "selected_2": {
+    "file": "rider/selected.png",
+    "region": {
+      "x": 295,
+      "y": 145,
+      "width": 83,
+      "height": 105
+    },
+    "threshold": 0.1
+  },
+  "selected_3": {
+    "file": "rider/selected.png",
+    "region": {
+      "x": 495,
+      "y": 145,
+      "width": 83,
+      "height": 105
+    },
+    "threshold": 0.1
+  },
+  "selected_4": {
+    "file": "rider/selected.png",
+    "region": {
+      "x": 695,
+      "y": 145,
+      "width": 83,
+      "height": 105
+    },
+    "threshold": 0.1
+  },
+  "selected_5": {
+    "file": "rider/selected.png",
+    "region": {
+      "x": 895,
+      "y": 145,
+      "width": 83,
+      "height": 105
+    },
+    "threshold": 0.1
+  },
+  "selected_6": {
+    "file": "rider/selected.png",
+    "region": {
+      "x": 1095,
+      "y": 145,
+      "width": 83,
+      "height": 105
+    },
+    "threshold": 0.1
+  },
+  "support_card_1": {
+    "file": "rider/supportCard.png",
+    "region": {
+      "x": 125,
+      "y": 395,
+      "width": 113,
+      "height": 51
+    },
+    "threshold": 0.09
+  },
+  "support_card_2": {
+    "file": "rider/supportCard.png",
+    "region": {
+      "x": 382,
+      "y": 395,
+      "width": 113,
+      "height": 51
+    },
+    "threshold": 0.09
+  },
+  "support_card_3": {
+    "file": "rider/supportCard.png",
+    "region": {
+      "x": 639,
+      "y": 395,
+      "width": 113,
+      "height": 51
+    },
+    "threshold": 0.09
+  },
+  "support_card_4": {
+    "file": "rider/supportCard.png",
+    "region": {
+      "x": 896,
+      "y": 395,
+      "width": 113,
+      "height": 51
+    },
+    "threshold": 0.09
+  },
+  "support_card_5": {
+    "file": "rider/supportCard.png",
+    "region": {
+      "x": 1153,
+      "y": 395,
+      "width": 113,
+      "height": 51
+    },
+    "threshold": 0.09
+  },
+  "choose_friend": {
+    "file": "common/choosefriend.png",
+    "region": {
+      "x": 1189,
+      "y": 190,
+      "width": 21,
+      "height": 53
+    },
+    "threshold": 0.05
+  },
+  "choose_friend_extra": {
+    "file": "common/choosefriendex.png",
+    "region": {
+      "x": 1189,
+      "y": 190,
+      "width": 21,
+      "height": 53
+    },
+    "threshold": 0.05
+  },
+  "no_friend": {
+    "file": "common/nofriend.png",
+    "region": {
+      "x": 245,
+      "y": 362,
+      "width": 29,
+      "height": 30
+    },
+    "threshold": 0.05
+  },
+  "turn_begin": {
+    "file": "common/attack.png",
+    "region": {
+      "x": 1155,
+      "y": 635,
+      "width": 55,
+      "height": 47
+    },
+    "threshold": 0.05
+  },
+  "support_slot_3": {
+    "file": "common/support.png",
+    "region": {
+      "x": 823,
+      "y": 394,
+      "width": 38,
+      "height": 18
+    },
+    "threshold": 0.05
+  },
+  "apple_confirm_gold": {
+    "file": "live/apple_confirm_gold.png",
+    "region": {
+      "x": 480,
+      "y": 190,
+      "width": 325,
+      "height": 60
+    },
+    "threshold": 0.025
+  },
+  "apple_confirm_silver": {
+    "file": "live/apple_confirm_silver.png",
+    "region": {
+      "x": 390,
+      "y": 490,
+      "width": 490,
+      "height": 55
+    },
+    "threshold": 0.025
+  },
+  "apple_confirm_bronze": {
+    "file": "live/apple_confirm_bronze.png",
+    "region": {
+      "x": 390,
+      "y": 490,
+      "width": 490,
+      "height": 55
+    },
+    "threshold": 0.025
+  },
+  "apple_count_1": {
+    "file": "live/apple_count_1.png",
+    "region": {
+      "x": 707,
+      "y": 348,
+      "width": 86,
+      "height": 43
+    },
+    "threshold": 0.015
+  },
+  "apple_count_2": {
+    "file": "live/apple_count_2.png",
+    "region": {
+      "x": 707,
+      "y": 348,
+      "width": 86,
+      "height": 43
+    },
+    "threshold": 0.015
+  },
+  "apple_count_3": {
+    "file": "live/apple_count_3.png",
+    "region": {
+      "x": 707,
+      "y": 348,
+      "width": 86,
+      "height": 43
+    },
+    "threshold": 0.015
+  },
+  "apple_count_4": {
+    "file": "live/apple_count_4.png",
+    "region": {
+      "x": 707,
+      "y": 348,
+      "width": 86,
+      "height": 43
+    },
+    "threshold": 0.015
+  }
+}
