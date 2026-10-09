@@ -17,6 +17,8 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 
 const PORTRAIT_CHANGE_THRESHOLD: f64 = 0.05;
+// A replacement must stop fading before it can consume a reserve identity.
+const PORTRAIT_STABILITY_THRESHOLD: f64 = 0.001;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -186,6 +188,15 @@ impl RosterObservation {
                     > PORTRAIT_CHANGE_THRESHOLD
         })
     }
+
+    fn stable_with(&self, next: &Self) -> bool {
+        self.support == next.support
+            && self
+                .portraits
+                .iter()
+                .zip(&next.portraits)
+                .all(|(left, right)| left.difference(right) <= PORTRAIT_STABILITY_THRESHOLD)
+    }
 }
 
 impl BattleWave {
@@ -249,12 +260,18 @@ pub struct BattleTracker {
     progress: BattleProgress,
     phase: TurnPhase,
     roster: Option<RosterObservation>,
+    pending_roster: Option<RosterObservation>,
     refresh_roster: bool,
 }
 
 impl BattleTracker {
     pub fn progress(&self) -> &BattleProgress {
         &self.progress
+    }
+
+    /// An unconfirmed portrait change must not drive identity-dependent input.
+    pub fn roster_ready(&self) -> bool {
+        self.pending_roster.is_none()
     }
 
     pub fn reset(&mut self) -> bool {
@@ -277,9 +294,12 @@ impl BattleTracker {
             let changed = self.progress.outcome != Some(outcome);
             self.progress.outcome = Some(outcome);
             self.phase = TurnPhase::Finished;
+            self.pending_roster = None;
             return Ok(changed);
         }
         if !state.idle() {
+            // Only consecutive skill-screen captures can confirm a replacement.
+            self.pending_roster = None;
             return Ok(false);
         }
 
@@ -293,6 +313,18 @@ impl BattleTracker {
         if self.phase == TurnPhase::Resolving {
             if let (Some(previous), Some(current)) = (&self.roster, &state.roster) {
                 let changed = previous.changed_slots(current);
+                if changed.into_iter().any(|changed| changed)
+                    && !self
+                        .pending_roster
+                        .as_ref()
+                        .is_some_and(|pending| pending.stable_with(current))
+                {
+                    // The turn button appears before the portraits finish
+                    // fading in. Keep the last confirmed identities and baseline
+                    // until a second capture agrees with the replacement.
+                    self.pending_roster = Some(current.clone());
+                    return Ok(false);
+                }
                 for (index, changed) in changed.into_iter().enumerate() {
                     if changed && self.progress.positions[index].is_some() {
                         self.replace_defeated(
@@ -300,7 +332,10 @@ impl BattleTracker {
                         );
                     }
                 }
+            } else if self.pending_roster.is_some() {
+                return Ok(false);
             }
+            self.pending_roster = None;
             self.roster.clone_from(&state.roster);
         }
         if !matches!(self.phase, TurnPhase::Awaiting | TurnPhase::Resolving) {
@@ -338,6 +373,7 @@ impl BattleTracker {
             "order-change reserve member must be in slots 4..6"
         );
         self.progress.positions.swap(field.index(), reserve.index());
+        self.pending_roster = None;
         self.refresh_roster = true;
         Ok(true)
     }
@@ -637,6 +673,9 @@ pub trait BattlePort: Executor {
             Some(PartySlot::Three),
         ]
     }
+    fn roster_ready(&self) -> bool {
+        true
+    }
     fn noble_phantasm_color(&self, _identity: PartySlot) -> Option<Color> {
         None
     }
@@ -803,7 +842,7 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
             match context.observe(
                 self.port.current_frame_id(),
                 state.scene(),
-                predicate(&state),
+                predicate(&state) && (!state.idle() || self.port.roster_ready()),
                 self.port.elapsed_ms(),
             ) {
                 VerificationProgress::Succeeded => {
@@ -912,13 +951,14 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         left: &mut bool,
         target_sent: bool,
         deadline_ms: u64,
+        enabled: bool,
     ) -> Result<()> {
         if !state.skill_confirmation {
             *left |= *sent;
             return Ok(());
         }
         ensure!(
-            self.port.profile().confirm_skill_use && !target_sent && !*left,
+            enabled && !target_sent && !*left,
             "unexpected or repeated skill confirmation"
         );
         if !*sent {
@@ -1226,6 +1266,27 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
                 return Ok(false);
             }
         }
+        self.execute_servant_skill(
+            servant,
+            skill_slot,
+            target,
+            strict,
+            profile.confirm_skill_use,
+        )
+    }
+
+    /// Shared post-preflight execution for profile and script-free skills.
+    /// Confirmation is allowed only after this action submits its skill click.
+    fn execute_servant_skill(
+        &mut self,
+        servant: FieldSlot,
+        skill_slot: SkillSlot,
+        target: Target,
+        strict: bool,
+        confirm_skill_use: bool,
+    ) -> Result<bool> {
+        let (i, j) = (servant.index(), skill_slot.index());
+        let (slot, skill) = (i + 1, j + 1);
         self.port.command(Command::CastServantSkill {
             servant,
             skill: skill_slot,
@@ -1242,7 +1303,7 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         self.port.tap(UI_LAYOUT_V1.battle.servant_skills[i][j])?;
         self.port.sleep(800)?;
         let mut expected_scenes = vec![Scene::SkillTarget, Scene::BattleTurn];
-        if profile.confirm_skill_use {
+        if confirm_skill_use {
             expected_scenes.push(Scene::SkillConfirmation);
         }
         let description = format!("servant {slot} skill {skill} entering cooldown");
@@ -1272,6 +1333,7 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
                 &mut confirmation_left,
                 target_sent,
                 verification.deadline_ms,
+                confirm_skill_use,
             )?;
             if s.target_count > 0 && !target_sent {
                 let Target::Ally { slot } = target else {
@@ -1319,7 +1381,14 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         let (mut sent, mut left) = (false, false);
         loop {
             let s = self.observe(RequiredBattleFacts::default(), &expected)?;
-            self.skill_confirmation(&s, &mut sent, &mut left, false, verification.deadline_ms)?;
+            self.skill_confirmation(
+                &s,
+                &mut sent,
+                &mut left,
+                false,
+                verification.deadline_ms,
+                self.port.profile().confirm_skill_use,
+            )?;
             match verification.observe(
                 self.port.current_frame_id(),
                 s.scene(),
@@ -1645,6 +1714,7 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
                 &mut confirmation_left,
                 target_sent,
                 verification.deadline_ms,
+                profile.confirm_skill_use,
             )?;
             if s.target_count > 0 && !target_sent {
                 let Target::Ally { slot } = target else {
@@ -1687,6 +1757,52 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         self.attack_with_mask(first, [true; 3], false).map(|_| ())
     }
 
+    /// MaaFgo's no-plan policy: visit each current frontline skill once per
+    /// turn, cast confirmed ready skills, and default ally targets to the caster.
+    /// Re-observe before each cast so cooldown changes never use stale facts.
+    pub fn cast_default_skills(&mut self) -> Result<usize> {
+        let mut cast = 0;
+        for slot in 1..=3 {
+            let servant = FieldSlot::try_from(slot).map_err(anyhow::Error::msg)?;
+            for skill in 1..=3 {
+                let skill_slot = SkillSlot::try_from(skill).map_err(anyhow::Error::msg)?;
+                let state = self.master_panel(false, RequiredBattleFacts::SKILLS)?;
+                match state.skill_state(servant.index(), skill_slot.index()) {
+                    Some(SkillState::Available) => {
+                        cast += usize::from(self.execute_servant_skill(
+                            servant,
+                            skill_slot,
+                            Target::Ally { slot: servant },
+                            false,
+                            true,
+                        )?);
+                    }
+                    Some(SkillState::Cooldown | SkillState::Disabled) => {}
+                    None => self.port.log(&format!(
+                        "Skip automatic servant {slot} skill {skill}: readiness unknown"
+                    ))?,
+                }
+            }
+        }
+        self.port
+            .log(&format!("Automatic servant skills: {cast} cast"))?;
+        Ok(cast)
+    }
+
+    /// Script-free battle: use ready servant skills, then NPs and the default
+    /// card ranking, without assuming any servant identity or order change.
+    pub fn fight_default(&mut self) -> Result<()> {
+        let mut turns = 0;
+        while self.wait_next()? {
+            ensure!(turns < 100, "default battle exceeded 100 turns");
+            self.cast_default_skills()?;
+            self.attack_with_policy(false, [true; 3], false, None)?;
+            turns += 1;
+        }
+        self.port
+            .log(&format!("Default battle finished in {turns} turns"))
+    }
+
     /// Probe command-card availability, then commit only the requested NPs.
     /// An unavailable optional NP returns to the verified skill screen.
     pub fn attack_np(&mut self, slot: usize, required: bool) -> Result<bool> {
@@ -1709,22 +1825,53 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
 
     fn attack_with_mask(&mut self, first: bool, mask: [bool; 3], probe: bool) -> Result<bool> {
         let profile = self.port.profile().clone();
-        let facts = if profile.enemy_target == EnemyTargetStrategy::HighestHp {
+        self.attack_with_policy(first, mask, probe, Some(&profile))
+    }
+
+    fn attack_with_policy(
+        &mut self,
+        first: bool,
+        mask: [bool; 3],
+        probe: bool,
+        profile: Option<&PartyProfile>,
+    ) -> Result<bool> {
+        let enemy_target = profile.map_or(EnemyTargetStrategy::Current, |p| p.enemy_target);
+        let battle_speed = profile.map_or(BattleSpeedPolicy::Double, |p| p.battle_speed);
+        let default_cards = CardStrategyProfile::default();
+        let card_strategy = profile.map_or(&default_cards, |p| &p.cards);
+        let facts = if enemy_target == EnemyTargetStrategy::HighestHp {
             RequiredBattleFacts::MARKERS.union(RequiredBattleFacts::ENEMIES)
-        } else {
+        } else if profile.is_some() {
             RequiredBattleFacts::MARKERS
+        } else {
+            // An empty frontline slot can look bright on the card screen.
+            // Generic battles must confirm actual NP before opening cards;
+            // without a profile there is no known roster to exclude that slot.
+            RequiredBattleFacts::NP
         };
         let before = self.master_panel(false, facts)?;
-        ensure!(
-            before.has_marker(&profile.support_marker),
-            "party profile {} support marker is no longer visible",
-            profile.id
-        );
-        self.apply_enemy_target(&before, profile.enemy_target)?;
+        let mask = if profile.is_none() {
+            std::array::from_fn(|i| {
+                mask[i]
+                    && before.np_percent[i]
+                        .value()
+                        .is_some_and(|np| (100..=300).contains(&np))
+            })
+        } else {
+            mask
+        };
+        if let Some(profile) = profile {
+            ensure!(
+                before.has_marker(&profile.support_marker),
+                "party profile {} support marker is no longer visible",
+                profile.id
+            );
+        }
+        self.apply_enemy_target(&before, enemy_target)?;
         self.port.command(Command::Attack { opening: first })?;
         self.port.tap(UI_LAYOUT_V1.battle.attack)?;
         self.port.sleep(1800)?;
-        let card_facts = if profile.battle_speed == BattleSpeedPolicy::Double {
+        let card_facts = if battle_speed == BattleSpeedPolicy::Double {
             RequiredBattleFacts::CARDS.union(RequiredBattleFacts::SPEED)
         } else {
             RequiredBattleFacts::CARDS
@@ -1744,7 +1891,7 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
             card_facts,
             BattleState::cards_complete,
         )?;
-        if profile.battle_speed == BattleSpeedPolicy::Double {
+        if battle_speed == BattleSpeedPolicy::Double {
             match current.battle_speed.value() {
                 Some(BattleSpeed::Double) => {}
                 Some(BattleSpeed::Normal) => {
@@ -1798,10 +1945,10 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
                 "Dynamic support identity unconfirmed in current frame or conflicting across frames; discard previous-frame identity for NP color",
             )?;
         }
-        let support_slot = profile.support_party_slot();
+        let support_slot = profile.map(PartyProfile::support_party_slot);
         let noble_phantasm_colors = std::array::from_fn(|field| {
             frontline[field].and_then(|identity| {
-                (identity == support_slot)
+                (Some(identity) == support_slot)
                     .then(|| {
                         observed_support
                             .and_then(|atlas_id| self.port.atlas_noble_phantasm_color(atlas_id))
@@ -1841,7 +1988,7 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
             ready,
             frontline,
             noble_phantasm_colors,
-            &profile.cards,
+            card_strategy,
         )?;
         self.port.log(&format!("Select cards: {cards:?}"))?;
         self.port.command(Command::SelectCards)?;
@@ -2300,9 +2447,15 @@ mod tests {
             .observe(&idle_with_roster([10, 20, 30], [false; 3]))
             .unwrap();
         assert!(tracker.attack_committed());
-        tracker
-            .observe(&idle_with_roster([200, 20, 30], [false; 3]))
-            .unwrap();
+        let changed = idle_with_roster([200, 20, 30], [false; 3]);
+        assert!(!tracker.observe(&changed).unwrap());
+        assert!(!tracker.roster_ready());
+        assert_eq!(
+            tracker.progress().positions,
+            BattleProgress::default().positions
+        );
+        assert!(tracker.observe(&changed).unwrap());
+        assert!(tracker.roster_ready());
         assert_eq!(
             tracker.progress().frontline(),
             [
@@ -2349,9 +2502,10 @@ mod tests {
             .observe(&idle_with_roster([10, 20, 30], [false, false, true]))
             .unwrap();
         assert!(tracker.attack_committed());
-        tracker
-            .observe(&idle_with_roster([10, 20, 30], [false; 3]))
-            .unwrap();
+        let changed = idle_with_roster([10, 20, 30], [false; 3]);
+        assert!(!tracker.observe(&changed).unwrap());
+        assert!(!tracker.roster_ready());
+        assert!(tracker.observe(&changed).unwrap());
         assert_eq!(
             tracker.progress().frontline(),
             [
@@ -2360,5 +2514,51 @@ mod tests {
                 Some(PartySlot::Four)
             ]
         );
+    }
+
+    #[test]
+    fn tracker_does_not_confirm_a_replacement_while_portraits_are_still_fading() {
+        let mut tracker = BattleTracker::default();
+        let before = idle_with_roster([10, 20, 30], [false; 3]);
+        tracker.observe(&before).unwrap();
+        tracker.attack_committed();
+        assert!(
+            !tracker
+                .observe(&idle_with_roster([150, 20, 30], [false; 3]))
+                .unwrap()
+        );
+        assert!(
+            !tracker
+                .observe(&idle_with_roster([190, 20, 30], [false; 3]))
+                .unwrap()
+        );
+        assert_eq!(
+            tracker.progress().positions,
+            BattleProgress::default().positions
+        );
+        assert!(!tracker.roster_ready());
+        assert!(tracker.observe(&before).unwrap());
+        assert!(tracker.roster_ready());
+        assert_eq!(tracker.progress().turns_seen, 2);
+        assert_eq!(
+            tracker.progress().positions,
+            BattleProgress::default().positions
+        );
+    }
+
+    #[test]
+    fn tracker_requires_consecutive_roster_evidence_and_resets_pending_changes() {
+        let mut tracker = BattleTracker::default();
+        let before = idle_with_roster([10, 20, 30], [false, false, true]);
+        let changed = idle_with_roster([200, 20, 30], [false, false, true]);
+        tracker.observe(&before).unwrap();
+        tracker.attack_committed();
+        assert!(!tracker.observe(&changed).unwrap());
+        tracker.observe(&BattleState::default()).unwrap();
+        assert!(!tracker.observe(&changed).unwrap());
+        assert!(!tracker.roster_ready());
+        tracker.reset();
+        assert!(tracker.roster_ready());
+        assert_eq!(tracker.progress(), &BattleProgress::default());
     }
 }

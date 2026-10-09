@@ -38,20 +38,6 @@ impl Vision {
         )
     }
 
-    pub fn battle_state_with_markers(
-        &self,
-        frame: &RgbaImage,
-        control: &Control,
-        marker_names: &[String],
-    ) -> Result<BattleState> {
-        self.battle_state_with_markers_and_facts(
-            frame,
-            control,
-            marker_names,
-            RequiredBattleFacts::ALL,
-        )
-    }
-
     pub fn battle_state_with_markers_and_facts(
         &self,
         frame: &RgbaImage,

@@ -2,21 +2,18 @@ use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use fgo_rs::{
     adb::Adb,
-    battle::Color,
-    catalog::{
-        AtlasClient, CardType, PartyServantData, Region, SupportServantData,
-        load_party_servant_data, load_support_servant_data,
-    },
+    catalog::{AtlasClient, Region},
     control::Control,
-    device::{AdbDevice, Device, FrameSource, ReplayDevice},
+    device::{AdbDevice, FrameSource},
     farming::Apple,
     profile::PartyProfile,
-    replay::{ReplayComparisonMode, ReplayEventSink, ReplayTrace, require_matching_replay},
-    runtime::{Host, Runtime},
-    vision::{self, Rect, Vision},
+    replay::ReplayComparisonMode,
+    runner::{self, RecognitionConfig, RunConfig, RunHooks, configure_party_vision, parent_dir},
+    runtime::Runtime,
+    vision::{self, Rect},
 };
 use std::{
-    io::{self, BufRead, BufWriter},
+    io::{self, BufRead},
     path::PathBuf,
     time::Duration,
 };
@@ -164,68 +161,6 @@ fn parse_rect(text: &str) -> std::result::Result<Rect, String> {
     })
 }
 
-fn parent_dir(path: &std::path::Path) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)?;
-    }
-    Ok(())
-}
-
-fn load_vision(
-    manifest: &std::path::Path,
-    library: Option<&std::path::Path>,
-    resources: &[PathBuf],
-    ocr_model: Option<&std::path::Path>,
-) -> Result<Vision> {
-    let vision = Vision::load(manifest)?;
-    let Some(library) = library else {
-        return Ok(vision);
-    };
-    #[cfg(feature = "maa")]
-    {
-        let mut bundles = vec![
-            manifest
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .join("maa"),
-        ];
-        bundles.extend_from_slice(resources);
-        let backend = fgo_rs::maa::MaaRecognizer::new(library, &bundles, ocr_model)?;
-        let mut vision = vision;
-        vision.set_maa_backend(backend)?;
-        Ok(vision)
-    }
-    #[cfg(not(feature = "maa"))]
-    {
-        let _ = (library, resources, ocr_model);
-        anyhow::bail!("MaaFramework support is disabled; build with cargo build --features maa");
-    }
-}
-
-fn configure_party_vision(
-    vision: &mut Vision,
-    profile: &PartyProfile,
-    data_dir: &std::path::Path,
-    region: Region,
-) -> Result<(Vec<PartyServantData>, Vec<SupportServantData>)> {
-    let party_data = load_party_servant_data(data_dir, region, profile)?;
-    let support_data = load_support_servant_data(data_dir, region, profile)?;
-    vision.configure_card_identities(
-        party_data
-            .iter()
-            .map(|servant| (servant.slot, servant.command_card_templates.clone()))
-            .collect(),
-        Some(profile.support_party_slot()),
-    )?;
-    vision.configure_support_identities(
-        support_data
-            .iter()
-            .map(|servant| (servant.atlas_id, servant.command_card_templates.clone()))
-            .collect(),
-    )?;
-    Ok((party_data, support_data))
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_seconds = if let Commands::Run { max_seconds, .. } = &cli.command {
@@ -250,6 +185,11 @@ fn main() -> Result<()> {
     let adb = Adb {
         executable: cli.adb,
         timeout: Duration::from_secs(cli.adb_timeout),
+    };
+    let recognition = RecognitionConfig {
+        library: cli.maa_library,
+        resources: cli.maa_resource,
+        ocr_model: cli.maa_ocr_model,
     };
     match cli.command {
         Commands::SyncData {
@@ -320,15 +260,10 @@ fn main() -> Result<()> {
             viewport,
         } => {
             let (frame, _) = vision::normalize(&image::open(&image)?.to_rgba8(), viewport)?;
-            let mut vision = load_vision(
-                &templates,
-                cli.maa_library.as_deref(),
-                &cli.maa_resource,
-                cli.maa_ocr_model.as_deref(),
-            )?;
+            let mut vision = recognition.load(&templates)?;
             if let Some(node) = maa_node {
                 ensure!(
-                    cli.maa_library.is_some(),
+                    recognition.library.is_some(),
                     "--maa-node requires --maa-library"
                 );
                 #[cfg(feature = "maa")]
@@ -399,97 +334,34 @@ fn main() -> Result<()> {
             apple_kind,
             ..
         } => {
-            let source = std::fs::read_to_string(&script)
-                .with_context(|| format!("read {}", script.display()))?;
-            Runtime::check(&source)?;
-            let profile = PartyProfile::load(&profile)?;
-            let mut vision = load_vision(
-                &templates,
-                cli.maa_library.as_deref(),
-                &cli.maa_resource,
-                cli.maa_ocr_model.as_deref(),
-            )?;
-            let (party_data, support_data) =
-                configure_party_vision(&mut vision, &profile, &data_dir, region)?;
-            if let Some(baseline) = &replay_trace {
-                ensure!(
-                    baseline != &trace,
-                    "--trace must differ from --replay-trace so the baseline is not modified"
-                );
-            }
-            if let Some(report) = &replay_report {
-                ensure!(
-                    report != &trace && replay_trace.as_ref() != Some(report),
-                    "--replay-report must differ from both trace paths"
-                );
-            }
-            let replay_baseline = replay_trace.as_deref().map(ReplayTrace::load).transpose()?;
-            let device: Box<dyn Device> = if let Some(path) = replay {
-                Box::new(if let Some(baseline) = &replay_baseline {
-                    ReplayDevice::with_timestamps(&path, baseline.capture_timestamps())?
-                } else {
-                    ReplayDevice::new(&path)?
-                })
-            } else {
-                Box::new(AdbDevice {
+            let prepared = runner::prepare(
+                RunConfig {
+                    fixed_farm: None,
                     adb,
-                    serial: serial.context("missing --serial")?,
-                })
-            };
-            parent_dir(&trace)?;
-            let output = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&trace)?;
-            let (mut host, replay_events) = if replay_baseline.is_some() {
-                let (events, captured) =
-                    ReplayEventSink::new(Some(Box::new(BufWriter::new(output))));
-                (
-                    Host::with_event_sink(
-                        device,
-                        vision,
-                        viewport,
-                        execute,
-                        Box::new(events),
-                        control.clone(),
-                    ),
-                    Some(captured),
-                )
-            } else {
-                (
-                    Host::new(
-                        device,
-                        vision,
-                        viewport,
-                        execute,
-                        Some(Box::new(BufWriter::new(output))),
-                        control.clone(),
-                    ),
-                    None,
-                )
-            };
-            host.configure_profile(profile)?;
-            host.configure_noble_phantasm_colors(party_data.iter().map(|servant| {
-                let color = match servant.noble_phantasm_card {
-                    CardType::Arts => Color::Arts,
-                    CardType::Buster => Color::Buster,
-                    CardType::Quick => Color::Quick,
-                };
-                (servant.slot, color)
-            }))?;
-            host.configure_atlas_noble_phantasm_colors(support_data.iter().map(|servant| {
-                let color = match servant.noble_phantasm_card {
-                    CardType::Arts => Color::Arts,
-                    CardType::Buster => Color::Buster,
-                    CardType::Quick => Color::Quick,
-                };
-                (servant.atlas_id, color)
-            }))?;
-            if let Some(frames) = frames {
-                host.record_frames(frames)?;
-            }
-            host.configure_farm(battles, apples, Apple::parse(&apple_kind)?);
-            let runtime = Runtime::new(host, max_operations);
+                    script,
+                    serial,
+                    replay,
+                    replay_trace,
+                    replay_compare,
+                    replay_report,
+                    execute,
+                    templates,
+                    recognition,
+                    profile,
+                    region,
+                    data_dir,
+                    viewport,
+                    max_seconds,
+                    max_operations,
+                    trace,
+                    frames,
+                    battles,
+                    apples,
+                    apple: Apple::parse(&apple_kind)?,
+                },
+                control.clone(),
+                RunHooks::default(),
+            )?;
             eprintln!(
                 "Mode: {}. Commands: pause / resume / stop + Enter; Ctrl-C stops.",
                 if execute {
@@ -515,32 +387,7 @@ fn main() -> Result<()> {
                     }
                 }
             });
-            let run_result = runtime.run(&source);
-            if let (Some(baseline), Some(events)) = (&replay_baseline, replay_events) {
-                let report = baseline.compare(
-                    &events.snapshot()?,
-                    replay_compare.unwrap_or(ReplayComparisonMode::Events),
-                );
-                let json = serde_json::to_string_pretty(&report)?;
-                if let Some(path) = replay_report {
-                    parent_dir(&path)?;
-                    std::fs::write(&path, format!("{json}\n"))?;
-                    println!("{}", path.display());
-                } else {
-                    println!("{json}");
-                }
-                require_matching_replay(&report)?;
-            }
-            if let Err(error) = run_result {
-                let stamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_millis();
-                let diagnostic = trace.with_file_name(format!("failure-{stamp}.png"));
-                if runtime.save_last_frame(&diagnostic).is_ok() {
-                    eprintln!("Last observed frame: {}", diagnostic.display());
-                }
-                return Err(error).context("script failed");
-            }
+            prepared.run()?;
         }
     }
     Ok(())

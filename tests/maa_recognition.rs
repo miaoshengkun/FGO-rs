@@ -447,3 +447,11 @@ fn numeric_ocr_diagnostics_do_not_bypass_whole_number_validation() {
     assert!(observation.np_percent[0].is_unknown());
     assert_eq!(observation.np_percent[0].value(), None);
 }
+
+#[test]
+#[ignore = "requires FGO_MAA_LIBRARY; verifies turn fades preserve live Saber identities"]
+fn saber_turn_portrait_fade_with_native_recognition() {
+    let mut vision = Vision::load(&root().join("assets/templates.json")).unwrap();
+    vision.set_maa_backend(backend(None)).unwrap();
+    saber_frames::verify_roster_fade(&mut vision);
+}

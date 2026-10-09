@@ -42,6 +42,8 @@ pub struct BattleLayout {
 
 #[derive(Clone, Copy, Debug)]
 pub struct FarmLayout {
+    pub first_support: Point,
+    pub formation_teams: [Point; 15],
     pub quest_scroll_down: Swipe,
     pub quest_scroll_up: Swipe,
     pub dialog_confirm: Point,
@@ -497,6 +499,24 @@ pub const UI_LAYOUT_V1: UiLayout = UiLayout {
         ],
     },
     farm: FarmLayout {
+        first_support: Point { x: 845, y: 203 },
+        formation_teams: [
+            Point { x: 465, y: 50 },
+            Point { x: 490, y: 50 },
+            Point { x: 515, y: 50 },
+            Point { x: 540, y: 50 },
+            Point { x: 565, y: 50 },
+            Point { x: 590, y: 50 },
+            Point { x: 615, y: 50 },
+            Point { x: 640, y: 50 },
+            Point { x: 665, y: 50 },
+            Point { x: 690, y: 50 },
+            Point { x: 715, y: 50 },
+            Point { x: 740, y: 50 },
+            Point { x: 765, y: 50 },
+            Point { x: 790, y: 50 },
+            Point { x: 815, y: 50 },
+        ],
         quest_scroll_down: Swipe {
             from: Point { x: 1000, y: 550 },
             to: Point { x: 1000, y: 250 },

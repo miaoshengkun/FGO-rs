@@ -36,6 +36,27 @@ fn state(step: u32) -> fgo_rs::battle::BattleState {
 }
 
 #[test]
+fn two_surviving_servants_keep_the_empty_frontline_np_unknown() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let frame = image::open(root.join("tests/fixtures/live-default-two-servants.png"))
+        .unwrap()
+        .to_rgba8();
+    let vision = Vision::load(&root.join("assets/templates.json")).unwrap();
+    let state = vision
+        .battle_state_with_request(
+            &frame,
+            &Control::new(Duration::from_secs(10)),
+            &[],
+            BattleObservationRequest::new(RequiredBattleFacts::NP, &[Scene::BattleTurn]),
+        )
+        .unwrap();
+    assert!(state.idle());
+    assert_eq!(state.np_percent[0].value(), Some(85));
+    assert_eq!(state.np_percent[1].value(), Some(19));
+    assert!(state.np_percent[2].is_unknown());
+}
+
+#[test]
 fn live_buff_cards_keep_groups_and_report_missing_identity_candidates() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let raw = image::open(root.join("tests/fixtures/live-owner-buffs.png"))
@@ -273,6 +294,8 @@ fn real_portrait_change_reaches_tracker_without_misclassifying_order_change() {
     let mut replacement = BattleTracker::default();
     assert!(replacement.observe(&before).unwrap());
     assert!(replacement.attack_committed());
+    assert!(!replacement.observe(&changed).unwrap());
+    assert!(!replacement.roster_ready());
     assert!(replacement.observe(&changed).unwrap());
     assert_eq!(
         replacement.progress().frontline(),

@@ -2,7 +2,9 @@ use anyhow::Result;
 use fgo_rs::{
     domain::Command,
     executor::Executor,
-    farming::{Apple, FarmDriver, FarmPort, FarmSession, FarmState, RequiredFarmFacts},
+    farming::{
+        Apple, FarmDriver, FarmPort, FarmSession, FarmState, FixedFarmConfig, RequiredFarmFacts,
+    },
     vision::Point,
 };
 use std::collections::VecDeque;
@@ -87,6 +89,224 @@ fn list() -> FarmState {
         support_end: true,
         ..Default::default()
     }
+}
+
+fn fixed_session(team: u8) -> FarmSession {
+    FarmSession {
+        fixed: Some(FixedFarmConfig {
+            quest: Point { x: 900, y: 420 },
+            team,
+        }),
+        ..Default::default()
+    }
+}
+
+fn team(index: u8) -> FarmState {
+    FarmState {
+        formation: true,
+        team_index: Some(index),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn fixed_entry_uses_custom_point_first_support_and_verified_team_without_level_filter() {
+    let quest = FarmState {
+        event: true,
+        menu: true,
+        ..Default::default()
+    };
+    let support = FarmState {
+        support: true,
+        ..Default::default()
+    };
+    let mut port = Port::new(vec![
+        quest.clone(),
+        quest,
+        FarmState {
+            quest_confirm: true,
+            ..Default::default()
+        },
+        support.clone(),
+        support,
+        team(1),
+        team(1),
+        team(5),
+        team(5),
+        turn(),
+    ]);
+    let mut session = fixed_session(5);
+    assert!(
+        FarmDriver {
+            port: &mut port,
+            session: &mut session
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(
+        port.commands,
+        vec![
+            Command::SelectQuest,
+            Command::ConfirmQuest,
+            Command::SelectFirstSupport,
+            Command::SelectTeam { index: 5 },
+            Command::StartBattle
+        ]
+    );
+    assert_eq!(
+        port.taps,
+        vec![
+            Point { x: 900, y: 420 },
+            Point { x: 801, y: 573 },
+            Point { x: 845, y: 203 },
+            Point { x: 565, y: 50 },
+            Point { x: 1231, y: 687 }
+        ]
+    );
+    assert_eq!(port.swipes, 0);
+    assert!(session.active);
+    assert!(
+        port.requested_facts
+            .iter()
+            .all(|facts| !facts.contains(RequiredFarmFacts::SUPPORT)
+                && !facts.contains(RequiredFarmFacts::FORMATION))
+    );
+}
+
+#[test]
+fn fixed_team_zero_preserves_locked_formation_without_support_level_assumptions() {
+    let mut port = Port::new(vec![
+        FarmState {
+            formation: true,
+            ..Default::default()
+        },
+        turn(),
+    ]);
+    let mut session = fixed_session(0);
+    assert!(
+        FarmDriver {
+            port: &mut port,
+            session: &mut session
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(port.commands, vec![Command::StartBattle]);
+    assert_eq!(port.taps, vec![Point { x: 1231, y: 687 }]);
+    assert!(
+        port.requested_facts
+            .iter()
+            .all(|facts| *facts == RequiredFarmFacts::default())
+    );
+}
+
+#[test]
+fn fixed_entry_refuses_unknown_or_changing_quest_screens_before_input() {
+    for frames in [
+        vec![FarmState::default()],
+        vec![
+            FarmState {
+                event: true,
+                menu: true,
+                ..Default::default()
+            },
+            FarmState::default(),
+        ],
+    ] {
+        let mut port = Port::new(frames);
+        let mut session = fixed_session(0);
+        assert!(
+            FarmDriver {
+                port: &mut port,
+                session: &mut session
+            }
+            .enter()
+            .is_err()
+        );
+        assert!(port.taps.is_empty());
+        assert!(!session.active);
+    }
+}
+
+#[test]
+fn fixed_formation_refuses_unavailable_or_unconfirmed_team_before_start() {
+    for frame in [
+        FarmState {
+            formation: true,
+            ..Default::default()
+        },
+        team(1),
+    ] {
+        let mut port = Port::new(vec![frame]);
+        let mut session = fixed_session(2);
+        assert!(
+            FarmDriver {
+                port: &mut port,
+                session: &mut session
+            }
+            .enter()
+            .is_err()
+        );
+        assert!(!port.commands.contains(&Command::StartBattle));
+        assert!(!port.taps.contains(&Point { x: 1231, y: 687 }));
+        assert!(port.taps.len() <= 1);
+    }
+}
+
+#[test]
+fn fixed_entry_obeys_ap_and_battle_limits() {
+    let mut port = Port::new(vec![
+        FarmState {
+            ap_empty: true,
+            ..Default::default()
+        },
+        FarmState::default(),
+    ]);
+    let mut session = fixed_session(0);
+    assert!(
+        !FarmDriver {
+            port: &mut port,
+            session: &mut session
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(port.commands, vec![Command::DeclineApRecovery]);
+    assert_eq!(port.taps, vec![Point { x: 640, y: 629 }]);
+    session.completed = 1;
+    port.taps.clear();
+    assert!(
+        !FarmDriver {
+            port: &mut port,
+            session: &mut session
+        }
+        .enter()
+        .unwrap()
+    );
+    assert!(port.taps.is_empty());
+}
+
+#[test]
+fn fixed_repeat_can_enter_directly_after_first_support() {
+    let mut port = Port::new(vec![repeat(), list(), list(), turn(), turn(), turn()]);
+    let mut session = fixed_session(1);
+    assert!(
+        FarmDriver {
+            port: &mut port,
+            session: &mut session
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(
+        port.commands,
+        vec![Command::ConfirmQuest, Command::SelectFirstSupport]
+    );
+    assert_eq!(
+        port.taps,
+        vec![Point { x: 840, y: 580 }, Point { x: 845, y: 203 }]
+    );
 }
 
 #[test]

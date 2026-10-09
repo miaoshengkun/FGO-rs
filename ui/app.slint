@@ -1,0 +1,248 @@
+import { Button, CheckBox, ComboBox, HorizontalBox, VerticalBox, LineEdit, SpinBox, ScrollView, ListView, Palette } from "std-widgets.slint";
+
+component Label inherits Text {
+    color: #526078;
+    font-size: 12px;
+}
+
+component Picker inherits ComboBox { min-width: 0px; horizontal-stretch: 1; }
+component Field inherits LineEdit { min-width: 0px; horizontal-stretch: 1; }
+component Stepper inherits SpinBox { min-width: 0px; horizontal-stretch: 1; }
+
+export component AppWindow inherits Window {
+    title: "FGO-rs · 自动化工作台";
+    preferred-width: 1280px;
+    preferred-height: 860px;
+    min-width: 1080px;
+    min-height: 760px;
+    background: #f0f3f8;
+    default-font-size: 14px;
+    init => { Palette.color-scheme = ColorScheme.light; }
+
+    in property <[string]> devices;
+    in-out property <int> device-index: -1;
+    in-out property <string> adb-path;
+    in-out property <string> connection-address;
+    in property <[string]> profiles;
+    in property <[string]> scripts;
+    in-out property <int> profile-index;
+    in-out property <int> script-index;
+    in-out property <int> task-index;
+    in-out property <int> quest-x: 845;
+    in-out property <int> quest-y: 203;
+    in-out property <int> team-index;
+    in-out property <bool> picking-quest;
+    in-out property <int> region-index;
+    in-out property <int> battles: 1;
+    in-out property <int> apples: 0;
+    in-out property <int> apple-index;
+    in-out property <int> max-seconds: 600;
+    in-out property <int> mode-index;
+    in property <[string]> backends;
+    in-out property <int> backend-index;
+    in-out property <string> maa-library;
+    in-out property <string> maa-ocr;
+    in-out property <string> data-dir;
+    in property <bool> offline;
+    in property <bool> busy;
+    in property <bool> running;
+    in property <bool> paused;
+    in property <bool> stopping;
+    in property <string> status: "就绪";
+    in property <string> error-message;
+    in property <image> preview;
+    in property <bool> has-preview;
+    in property <string> preview-info: "选择设备后自动获取截图";
+    in property <string> scene: "未知";
+    in property <string> wave: "—";
+    in property <string> turn: "—";
+    in property <string> numbers: "HP / NP · 未请求识别";
+    in property <[string]> logs;
+    in property <string> trace-path;
+    callback refresh-devices();
+    callback connect-device();
+    callback device-changed();
+    callback start-run();
+    callback pause-resume();
+    callback stop-run();
+    callback clear-log();
+    callback select-quest(float, float);
+
+    VerticalLayout {
+        spacing: 0;
+        Rectangle {
+            height: 76px;
+            background: #18243b;
+            HorizontalLayout {
+                padding-left: 24px; padding-right: 24px; spacing: 16px;
+                VerticalLayout {
+                    alignment: center;
+                    Text { text: "FGO-rs"; color: white; font-size: 24px; font-weight: 700; }
+                    Text { text: "自动化工作台"; color: #afbdd5; font-size: 12px; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: root.offline ? "离线回放" : root.mode-index == 0 ? "只读演练 · 不发送输入" : "执行模式 · 发送设备输入"; color: root.mode-index == 0 ? #b8e0d1 : #ffcf8a; }
+                Rectangle {
+                    width: 132px; height: 32px; border-radius: 16px;
+                    background: #2a3b58;
+                    Text { text: root.status; color: #e6efff; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding: 18px; spacing: 18px;
+            Rectangle {
+                width: 330px; border-radius: 10px; background: white;
+                VerticalLayout {
+                    padding: 16px; spacing: 12px;
+                    Text { text: "任务配置"; font-size: 18px; font-weight: 700; color: #18243b; }
+                    ScrollView {
+                        horizontal-stretch: 1;
+                        content-width: self.visible-width;
+                        VerticalLayout {
+                            spacing: 7px;
+                            Label { text: "设备"; }
+                            Picker { model: root.devices; current-index <=> root.device-index; enabled: !root.busy && !root.running && !root.offline; selected => { root.device-changed(); } }
+                            HorizontalBox {
+                                padding: 0px;
+                                Field { text <=> root.connection-address; placeholder-text: "127.0.0.1:16384"; enabled: !root.busy && !root.running && !root.offline; }
+                                Button { text: "连接"; enabled: !root.busy && !root.running && !root.offline; clicked => { root.connect-device(); } }
+                                Button { text: "刷新"; enabled: !root.busy && !root.running && !root.offline; clicked => { root.refresh-devices(); } }
+                            }
+                            Label { text: "任务模式"; }
+                            Picker { model: ["固定位置刷图 · 默认战斗", "Profile / Rhai 脚本"]; current-index <=> root.task-index; enabled: !root.running && !root.busy; selected => { root.picking-quest = false; } }
+                            if root.task-index == 0: VerticalLayout {
+                                spacing: 7px;
+                                Label { text: "关卡位置（1280 × 720）"; }
+                                HorizontalBox {
+                                    padding: 0px;
+                                    Label { text: "X"; }
+                                    Stepper { minimum: 0; maximum: 1279; value <=> root.quest-x; enabled: !root.running && !root.busy; }
+                                    Label { text: "Y"; }
+                                    Stepper { minimum: 0; maximum: 719; value <=> root.quest-y; enabled: !root.running && !root.busy; }
+                                }
+                                Button { text: root.picking-quest ? "取消点选" : "在截图上点选关卡"; enabled: root.has-preview && !root.running && !root.busy; clicked => { root.picking-quest = !root.picking-quest; } }
+                                Label { text: "编队序号 · 0 保持当前队伍"; }
+                                Stepper { minimum: 0; maximum: 15; value <=> root.team-index; enabled: !root.running && !root.busy; }
+                                Text { text: "默认关卡为列表第一项。编队从左至右编号。\n助战选当前列表首项；自动使用可用从者技能，\n单体友方目标默认本人，再使用宝具并选卡。\n御主技能和换人关闭；支持从战斗中开始。"; color: #77849b; font-size: 11px; wrap: word-wrap; }
+                            }
+                            if root.task-index == 1: VerticalLayout {
+                                spacing: 7px;
+                                Label { text: "队伍 Profile"; }
+                                Picker { model: root.profiles; current-index <=> root.profile-index; enabled: !root.running; }
+                                Label { text: "Rhai 脚本"; }
+                                Picker { model: root.scripts; current-index <=> root.script-index; enabled: !root.running; }
+                            }
+                            Label { text: "区域 / 运行模式"; }
+                            HorizontalBox {
+                                padding: 0px;
+                                Picker { model: ["CN", "JP", "NA", "KR", "TW"]; current-index <=> root.region-index; enabled: !root.running; }
+                                Picker { model: ["只读演练", "执行输入"]; current-index <=> root.mode-index; enabled: !root.running && !root.offline; }
+                            }
+                            HorizontalBox {
+                                padding: 0px;
+                                VerticalLayout { Label { text: "场次 · 0 为不限"; } Stepper { minimum: 0; maximum: 999; value <=> root.battles; enabled: !root.running; } }
+                                VerticalLayout { Label { text: "苹果预算"; } Stepper { minimum: 0; maximum: 999; value <=> root.apples; enabled: !root.running; } }
+                            }
+                            Picker { model: ["金苹果", "银苹果", "铜苹果"]; current-index <=> root.apple-index; enabled: !root.running; }
+                            Label { text: "最长运行时长（秒，含暂停）"; }
+                            Stepper { minimum: 1; maximum: 86400; step-size: 60; value <=> root.max-seconds; enabled: !root.running; }
+                            Label { text: "识别后端"; }
+                            Picker { model: root.backends; current-index <=> root.backend-index; enabled: !root.running; }
+                            if root.backend-index == 1: VerticalLayout {
+                                spacing: 7px;
+                                Label { text: "MaaFramework v5.14.2 动态库"; }
+                                Field { text <=> root.maa-library; enabled: !root.running; }
+                                Label { text: "OCR 模型目录（可选）"; }
+                                Field { text <=> root.maa-ocr; enabled: !root.running; }
+                            }
+                            advanced := CheckBox { text: "路径设置"; }
+                            if advanced.checked: VerticalLayout {
+                                spacing: 7px;
+                                Label { text: "ADB 程序"; }
+                                Field { text <=> root.adb-path; enabled: !root.busy && !root.running; }
+                                Label { text: "Atlas 数据目录"; }
+                                Field { text <=> root.data-dir; enabled: !root.running; }
+                            }
+                            Text { text: "遇到未知识别结果时按核心规则停止。\n完整事件与截图保存到每次运行目录。"; color: #77849b; font-size: 11px; wrap: word-wrap; }
+                        }
+                    }
+                    Button { text: root.running ? "任务运行中" : "开始任务"; primary: true; enabled: !root.running && !root.busy; clicked => { root.start-run(); } }
+                    HorizontalBox {
+                        padding: 0px;
+                        Button { text: root.paused ? "继续" : "暂停"; enabled: root.running && !root.stopping; clicked => { root.pause-resume(); } }
+                        Button { text: "停止"; enabled: root.running && !root.stopping; clicked => { root.stop-run(); } }
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 12px;
+                Rectangle {
+                    vertical-stretch: 1; min-height: 300px; border-radius: 10px; background: #101828;
+                    game-picture := Rectangle {
+                        width: min(parent.width, parent.height * 16 / 9);
+                        height: self.width * 9 / 16;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        background: transparent;
+                        visible: root.has-preview;
+                        Image { source: root.preview; image-fit: contain; width: parent.width; height: parent.height; }
+                        if root.task-index == 0 && !root.running: Rectangle {
+                            width: 18px; height: 18px; border-width: 2px; border-color: #ff745a; border-radius: 9px; background: #ff745a55;
+                            x: parent.width * root.quest-x / 1280 - self.width / 2;
+                            y: parent.height * root.quest-y / 720 - self.height / 2;
+                        }
+                        TouchArea {
+                            width: parent.width; height: parent.height;
+                            enabled: root.task-index == 0 && root.picking-quest && !root.running && !root.busy;
+                            mouse-cursor: crosshair;
+                            clicked => { root.select-quest(self.mouse-x / self.width, self.mouse-y / self.height); }
+                        }
+                    }
+                    if !root.has-preview: Text { text: "等待设备画面"; color: #8a9ab5; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                HorizontalLayout {
+                    spacing: 16px;
+                    Text { text: root.preview-info; color: #6b7890; font-size: 11px; horizontal-stretch: 1; overflow: elide; }
+                    Text { text: root.picking-quest ? "点击关卡位置（仅设置坐标）" : "预览 ≤ 2 fps"; color: root.picking-quest ? #b6533c : #6b7890; font-size: 11px; }
+                }
+                Rectangle {
+                    height: 80px; background: white; border-radius: 10px;
+                    VerticalLayout {
+                        padding: 12px; spacing: 7px;
+                        HorizontalLayout {
+                            spacing: 16px;
+                            Text { text: "场景  " + root.scene; color: #273b57; font-weight: 600; horizontal-stretch: 1; }
+                            Text { text: "波次  " + root.wave; color: #273b57; }
+                            Text { text: "回合  " + root.turn; color: #273b57; }
+                        }
+                        Text { text: root.numbers; color: #6b7890; font-size: 12px; overflow: elide; }
+                    }
+                }
+                Rectangle {
+                    height: 210px; background: white; border-radius: 10px;
+                    VerticalLayout {
+                        padding: 12px; spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text { text: "运行日志"; color: #18243b; font-weight: 600; }
+                            Text { text: "最新在前 · 最多 300 条"; color: #8a96aa; font-size: 11px; horizontal-stretch: 1; }
+                            Button { text: "清空"; clicked => { root.clear-log(); } }
+                        }
+                        ListView {
+                            for entry in root.logs: Text { text: entry; color: #526078; font-size: 12px; wrap: word-wrap; }
+                        }
+                        Text { text: root.trace-path; color: #8a96aa; font-size: 10px; overflow: elide; }
+                    }
+                }
+                if root.error-message != "": Rectangle {
+                    min-height: 48px; max-height: 120px; background: #fff0ec; border-radius: 8px;
+                    VerticalLayout {
+                        padding: 12px;
+                        Text { text: root.error-message; color: #a63e28; font-size: 12px; wrap: word-wrap; }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -18,6 +18,7 @@ enum Clock {
 pub struct Control {
     stopped: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    pause_acknowledged: Arc<AtomicBool>,
     clock: Clock,
     limit: Duration,
 }
@@ -27,6 +28,7 @@ impl Control {
         Self {
             stopped: Arc::default(),
             paused: Arc::default(),
+            pause_acknowledged: Arc::default(),
             clock: Clock::Wall(Instant::now()),
             limit,
         }
@@ -38,6 +40,7 @@ impl Control {
         Self {
             stopped: Arc::default(),
             paused: Arc::default(),
+            pause_acknowledged: Arc::default(),
             clock: Clock::Simulated(Arc::default()),
             limit,
         }
@@ -52,6 +55,16 @@ impl Control {
     pub fn resume(&self) {
         self.paused.store(false, Ordering::SeqCst);
     }
+    pub fn is_stop_requested(&self) -> bool {
+        self.stopped.load(Ordering::SeqCst)
+    }
+    pub fn is_pause_requested(&self) -> bool {
+        self.paused.load(Ordering::SeqCst)
+    }
+    /// True only after a worker has entered a paused checkpoint.
+    pub fn is_paused(&self) -> bool {
+        self.pause_acknowledged.load(Ordering::SeqCst)
+    }
     pub fn elapsed(&self) -> Duration {
         match &self.clock {
             Clock::Wall(started) => started.elapsed(),
@@ -59,10 +72,6 @@ impl Control {
                 Duration::from_millis(elapsed_ms.load(Ordering::SeqCst))
             }
         }
-    }
-
-    pub fn is_simulated(&self) -> bool {
-        matches!(self.clock, Clock::Simulated(_))
     }
 
     /// Move simulated replay time forward to a recorded capture timestamp.
@@ -95,10 +104,17 @@ impl Control {
 
     pub fn checkpoint(&self) -> Result<()> {
         loop {
-            self.check_cancel()?;
+            if let Err(error) = self.check_cancel() {
+                self.pause_acknowledged.store(false, Ordering::SeqCst);
+                return Err(error);
+            }
             if !self.paused.load(Ordering::SeqCst) {
+                if self.pause_acknowledged.load(Ordering::Relaxed) {
+                    self.pause_acknowledged.store(false, Ordering::SeqCst);
+                }
                 return Ok(());
             }
+            self.pause_acknowledged.store(true, Ordering::SeqCst);
             thread::sleep(Duration::from_millis(20));
         }
     }
@@ -126,6 +142,51 @@ impl Control {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wait_until_paused(control: &Control) {
+        let started = Instant::now();
+        while !control.is_paused() {
+            assert!(
+                started.elapsed() < Duration::from_secs(2),
+                "worker did not acknowledge pause"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn pause_is_acknowledged_by_worker_and_cleared_after_resume() {
+        let control = Control::new(Duration::from_secs(5));
+        control.pause();
+        assert!(control.is_pause_requested());
+        assert!(!control.is_paused());
+        let worker_control = control.clone();
+        let worker = thread::spawn(move || worker_control.checkpoint());
+        wait_until_paused(&control);
+        assert!(!worker.is_finished());
+        control.resume();
+        worker.join().unwrap().unwrap();
+        assert!(!control.is_paused());
+    }
+
+    #[test]
+    fn stop_while_paused_finishes_without_a_resume() {
+        let control = Control::new(Duration::from_secs(5));
+        control.pause();
+        let worker_control = control.clone();
+        let worker = thread::spawn(move || worker_control.checkpoint());
+        wait_until_paused(&control);
+        control.stop();
+        assert!(
+            worker
+                .join()
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("execution stopped")
+        );
+        assert!(!control.is_paused());
+    }
 
     #[test]
     fn simulated_sleep_and_capture_timestamps_advance_without_wall_time() {

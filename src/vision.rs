@@ -319,6 +319,7 @@ impl<'a> FrameMatcher<'a> {
 
 pub struct Vision {
     pub(crate) farm_templates: Option<crate::profile::FarmTemplateProfile>,
+    pub(crate) fixed_farm: bool,
     templates: HashMap<String, Template>,
     card_identities: Vec<CardIdentityTemplates>,
     support_identities: Vec<SupportIdentityTemplates>,
@@ -400,6 +401,7 @@ impl Vision {
         }
         Ok(Self {
             farm_templates: None,
+            fixed_farm: false,
             templates,
             card_identities: Vec::new(),
             support_identities: Vec::new(),
@@ -964,6 +966,7 @@ mod tests {
             #[cfg(feature = "maa")]
             maa: None,
             farm_templates: None,
+            fixed_farm: false,
             templates: HashMap::from([(
                 "test".into(),
                 Template {

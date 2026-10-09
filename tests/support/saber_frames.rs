@@ -1,8 +1,8 @@
 use fgo_rs::{
-    battle::{BattleObservationRequest, Color, RequiredBattleFacts},
+    battle::{BattleObservationRequest, BattleTracker, Color, RequiredBattleFacts},
     control::Control,
     domain::PartySlot,
-    vision::Vision,
+    vision::{Vision, normalize},
 };
 use std::{path::Path, time::Duration};
 
@@ -183,4 +183,101 @@ pub fn verify_retest_facts(vision: &Vision) {
             "{name}"
         );
     }
+}
+
+pub fn verify_roster_fade(vision: &mut Vision) {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let control = Control::new(Duration::from_secs(30));
+    let state = |name: &str| {
+        let raw = image::open(root.join("tests/fixtures").join(name))
+            .unwrap()
+            .to_rgba8();
+        vision
+            .battle_state_with_markers_and_facts(
+                &normalize(&raw, None).unwrap().0,
+                &control,
+                &[],
+                RequiredBattleFacts::TRACKING,
+            )
+            .unwrap()
+    };
+    let stable = state("live-saber-roster-stable.png");
+    let fade = state("live-saber-roster-fade.png");
+    assert!(stable.idle() && fade.idle());
+    let mut tracker = BattleTracker::default();
+    tracker.observe(&stable).unwrap();
+    tracker
+        .order_change_committed(PartySlot::One, PartySlot::Five)
+        .unwrap();
+    tracker.observe(&stable).unwrap();
+    let expected = tracker.progress().positions;
+    for turn in 2..=3 {
+        assert!(tracker.attack_committed());
+        tracker.observe(&fade).unwrap();
+        assert_eq!(tracker.progress().positions, expected, "fading turn {turn}");
+        assert!(!tracker.roster_ready());
+        tracker.observe(&stable).unwrap();
+        assert_eq!(tracker.progress().positions, expected, "stable turn {turn}");
+        assert!(tracker.roster_ready());
+        assert_eq!(tracker.progress().turns_seen, turn);
+    }
+    vision
+        .configure_card_identities(
+            vec![
+                (
+                    PartySlot::Two,
+                    vec![
+                        image::open(root.join("tests/fixtures/saber-benienma-card.png"))
+                            .unwrap()
+                            .to_rgba8(),
+                    ],
+                ),
+                (
+                    PartySlot::Five,
+                    vec![
+                        image::open(root.join("tests/fixtures/saber-nero-bride-card.png"))
+                            .unwrap()
+                            .to_rgba8(),
+                    ],
+                ),
+            ],
+            Some(PartySlot::Three),
+        )
+        .unwrap();
+    let cards = vision
+        .battle_state_with_markers_and_facts(
+            &image::open(root.join("tests/fixtures/live-saber-roster-cards.png"))
+                .unwrap()
+                .to_rgba8(),
+            &control,
+            &[],
+            RequiredBattleFacts::CARDS,
+        )
+        .unwrap();
+    assert_eq!(cards.np_glow, [true; 3]);
+    assert_eq!(
+        cards.card_owners,
+        [
+            Some(PartySlot::Two),
+            Some(PartySlot::Two),
+            Some(PartySlot::Five),
+            Some(PartySlot::Three),
+            Some(PartySlot::Three)
+        ]
+    );
+    let profile: fgo_rs::profile::PartyProfile =
+        serde_json::from_str(include_str!("../../profiles/saber-v1.json")).unwrap();
+    let selected = fgo_rs::battle::rank_cards_with_party_data(
+        &cards,
+        [false, false, true],
+        tracker.progress().frontline(),
+        [None, None, Some(Color::Buster)],
+        &profile.cards,
+    )
+    .unwrap();
+    assert_eq!(selected[0], 8);
+    assert!(
+        selected[1..].iter().all(|card| [4, 5].contains(card)),
+        "{selected:?}"
+    );
 }

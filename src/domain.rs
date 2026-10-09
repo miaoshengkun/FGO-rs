@@ -205,6 +205,10 @@ pub enum Command {
     SelectSupport {
         level: u16,
     },
+    SelectFirstSupport,
+    SelectTeam {
+        index: u8,
+    },
     RefreshSupport {
         attempt: u32,
     },

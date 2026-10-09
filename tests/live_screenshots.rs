@@ -257,3 +257,11 @@ fn live_ap_confirmation_recognizes_kind_and_exact_batch_size() {
         assert!(s.ap_empty && s.apple_confirm.is_none() && s.apple_count.is_none());
     }
 }
+
+#[test]
+fn saber_turn_portrait_fade_does_not_consume_reserves_or_lose_ready_np_identity() {
+    let mut vision =
+        Vision::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/templates.json"))
+            .unwrap();
+    saber_frames::verify_roster_fade(&mut vision);
+}

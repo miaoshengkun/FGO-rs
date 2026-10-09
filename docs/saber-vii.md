@@ -1,6 +1,6 @@
 # 剑阶冠位战 VII
 
-单场入口为 `scripts/saber_battle.rhai`，周回入口为 `scripts/saber_farm.rhai`，使用 `profiles/saber-v1.json`。CN 实机模板已接入，仍需扩充不同状态下的样本覆盖。
+单场入口为 `scripts/saber_battle.rhai`，周回入口为 `scripts/saber_farm.rhai`，使用 `profiles/saber-v1.json`。CN 实机模板已接入；GUI 已完成两回合胜利、结算和完整事件回放，覆盖边界见 [验证](validation.md)。
 
 队伍：1 阿蒂拉、2 红阎魔、3 好友宫本伊织（120/120）、4 剑阶美杜莎、5 尼禄·克劳狄乌斯〔新娘〕、6 兰陵王。御主礼装需提供配置的强化与换人技能。运行区服默认 CN，本地 Atlas 详情需与运行区服一致。
 

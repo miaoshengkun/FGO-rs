@@ -119,6 +119,34 @@ impl ServantCatalog {
     }
 
     pub fn load_latest(root: &Path, region: Region) -> Result<(Self, PathBuf)> {
+        Self::load_matching(root, region, |_| true)
+    }
+
+    fn load_for_profile(
+        root: &Path,
+        region: Region,
+        profile: &PartyProfile,
+    ) -> Result<(Self, PathBuf)> {
+        let ids = profile.atlas_servant_ids();
+        Self::load_matching(root, region, |path| {
+            path.parent().is_some_and(|folder| {
+                ids.iter()
+                    .all(|&id| servant_detail_path(folder, id).is_file())
+            })
+        })
+        .with_context(|| {
+            format!(
+                "no {region} Atlas snapshot contains all servants for profile {}; run sync-data --profile first",
+                profile.id
+            )
+        })
+    }
+
+    fn load_matching(
+        root: &Path,
+        region: Region,
+        includes: impl Fn(&Path) -> bool,
+    ) -> Result<(Self, PathBuf)> {
         let region_dir = root.join(region.code());
         let entries = fs::read_dir(&region_dir)
             .with_context(|| format!("read catalog directory {}", region_dir.display()))?;
@@ -131,7 +159,7 @@ impl ServantCatalog {
             let Ok(candidate) = Self::load(&path) else {
                 continue;
             };
-            if candidate.source.region != region {
+            if candidate.source.region != region || !includes(&path) {
                 continue;
             }
             let replace = latest.as_ref().is_none_or(|(current, _)| {
@@ -440,6 +468,24 @@ fn servant_detail_path(version_dir: &Path, id: u32) -> PathBuf {
     }
 }
 
+/// Load the whole party from one snapshot. A catalog synced for another profile
+/// does not invalidate an older complete cache; corrupt selected data still fails.
+pub fn load_profile_servant_data(
+    root: &Path,
+    region: Region,
+    profile: &PartyProfile,
+) -> Result<(Vec<PartyServantData>, Vec<SupportServantData>)> {
+    if profile.atlas_servant_ids().is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let (catalog, path) = ServantCatalog::load_for_profile(root, region, profile)?;
+    let folder = path.parent().context("catalog path has no parent")?;
+    Ok((
+        load_party_from_snapshot(&catalog, folder, region, profile)?,
+        load_support_from_snapshot(&catalog, folder, region, profile)?,
+    ))
+}
+
 pub fn load_party_servant_data(
     root: &Path,
     region: Region,
@@ -448,15 +494,19 @@ pub fn load_party_servant_data(
     if profile.servants.is_empty() {
         return Ok(Vec::new());
     }
-    let (catalog, catalog_path) = ServantCatalog::load_latest(root, region).with_context(|| {
-        format!(
-            "load Atlas data for party profile {}; run sync-data --profile first",
-            profile.id
-        )
-    })?;
+    let (catalog, catalog_path) = ServantCatalog::load_for_profile(root, region, profile)?;
     let version_dir = catalog_path
         .parent()
         .context("catalog path has no parent")?;
+    load_party_from_snapshot(&catalog, version_dir, region, profile)
+}
+
+fn load_party_from_snapshot(
+    catalog: &ServantCatalog,
+    version_dir: &Path,
+    region: Region,
+    profile: &PartyProfile,
+) -> Result<Vec<PartyServantData>> {
     let mut result = Vec::with_capacity(profile.servants.len());
     for reference in &profile.servants {
         let detail_path = servant_detail_path(version_dir, reference.atlas_id);
@@ -474,7 +524,7 @@ pub fn load_party_servant_data(
             detail.source.region == region
                 && detail.source.data_hash == catalog.source.data_hash
                 && detail.source.data_timestamp == catalog.source.data_timestamp,
-            "servant detail does not match the latest {region} catalog"
+            "servant detail does not match the selected {region} catalog"
         );
         for rule in profile
             .skill_rules
@@ -546,15 +596,19 @@ pub fn load_support_servant_data(
     if profile.support_candidates.is_empty() {
         return Ok(Vec::new());
     }
-    let (catalog, catalog_path) = ServantCatalog::load_latest(root, region).with_context(|| {
-        format!(
-            "load Atlas data for party profile {}; run sync-data --profile first",
-            profile.id
-        )
-    })?;
+    let (catalog, catalog_path) = ServantCatalog::load_for_profile(root, region, profile)?;
     let version_dir = catalog_path
         .parent()
         .context("catalog path has no parent")?;
+    load_support_from_snapshot(&catalog, version_dir, region, profile)
+}
+
+fn load_support_from_snapshot(
+    catalog: &ServantCatalog,
+    version_dir: &Path,
+    region: Region,
+    profile: &PartyProfile,
+) -> Result<Vec<SupportServantData>> {
     let mut result = Vec::with_capacity(profile.support_candidates.len());
     for reference in &profile.support_candidates {
         let detail_path = servant_detail_path(version_dir, reference.atlas_id);
@@ -572,7 +626,7 @@ pub fn load_support_servant_data(
             detail.source.region == region
                 && detail.source.data_hash == catalog.source.data_hash
                 && detail.source.data_timestamp == catalog.source.data_timestamp,
-            "support servant detail does not match the latest {region} catalog"
+            "support servant detail does not match the selected {region} catalog"
         );
         for version in &reference.skill_versions {
             ensure!(
@@ -1329,6 +1383,133 @@ mod tests {
         output.into_inner()
     }
 
+    fn seed_profile_snapshot(root: &Path, hash: &str, timestamp: u64, ids: &[u32]) -> PathBuf {
+        seed_catalog(root);
+        let (mut catalog, _) = ServantCatalog::load_latest(root, Region::Cn).unwrap();
+        catalog.source.data_hash = hash.into();
+        catalog.source.data_timestamp = 1000 + timestamp;
+        for &id in ids {
+            if !catalog.servants.iter().any(|servant| servant.id == id) {
+                let mut servant = catalog.servants[0].clone();
+                servant.id = id;
+                catalog.servants.push(servant);
+            }
+        }
+        let version = AtlasVersion {
+            hash: hash.into(),
+            timestamp: 1000 + timestamp,
+        };
+        let folder = root.join("CN").join(hash);
+        fs::create_dir_all(folder.join("details-v3")).unwrap();
+        write_json(&folder.join("servants.json"), &catalog).unwrap();
+        for &id in ids {
+            let mut nice: AtlasNiceServant = serde_json::from_str(NICE_SERVANT).unwrap();
+            nice.id = id;
+            let mut detail =
+                detail_from_atlas(nice, Region::Cn, &version, "https://example.test".into())
+                    .unwrap();
+            for np in &mut detail.noble_phantasms {
+                np.card = if timestamp == 1 {
+                    CardType::Buster
+                } else {
+                    CardType::Arts
+                };
+            }
+            let detail_dir = folder.join("details-v3");
+            for asset in &detail.command_cards {
+                let path = detail_dir.join(&asset.template_file);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                RgbaImage::from_pixel(98, 47, image::Rgba([10, 20, 30, 255]))
+                    .save(path)
+                    .unwrap();
+            }
+            write_json(&detail_dir.join(format!("{id}.json")), &detail).unwrap();
+        }
+        folder
+    }
+
+    fn two_member_profile() -> PartyProfile {
+        let mut profile = PartyProfile::default();
+        profile.servants.truncate(1);
+        profile.support_candidates = vec![crate::profile::SupportServantReference {
+            atlas_id: 402700,
+            noble_phantasm_id: None,
+            skill_versions: Vec::new(),
+        }];
+        profile
+    }
+
+    #[test]
+    fn profile_uses_latest_snapshot_covering_both_party_and_support() {
+        let directory = tempfile::tempdir().unwrap();
+        seed_profile_snapshot(directory.path(), "old123", 1, &[400200, 402700]);
+        let newer = seed_profile_snapshot(directory.path(), "new123", 2, &[400200]);
+        let profile = two_member_profile();
+        let party = load_party_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+        let support = load_support_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+        assert_eq!(party[0].noble_phantasm_card, CardType::Buster);
+        assert_eq!(support[0].noble_phantasm_card, CardType::Buster);
+        let (party, support) =
+            load_profile_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+        assert_eq!(party[0].noble_phantasm_card, CardType::Buster);
+        assert_eq!(support[0].noble_phantasm_card, CardType::Buster);
+
+        // An unrelated newer catalog must not invalidate this party either.
+        fs::remove_file(newer.join("details-v3/400200.json")).unwrap();
+        load_party_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+        load_support_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+
+        seed_profile_snapshot(directory.path(), "new123", 2, &[400200, 402700]);
+        let party = load_party_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+        let support = load_support_servant_data(directory.path(), Region::Cn, &profile).unwrap();
+        assert_eq!(party[0].noble_phantasm_card, CardType::Arts);
+        assert_eq!(support[0].noble_phantasm_card, CardType::Arts);
+    }
+
+    #[test]
+    fn profile_does_not_combine_party_and_support_from_different_versions() {
+        let directory = tempfile::tempdir().unwrap();
+        seed_profile_snapshot(directory.path(), "old123", 1, &[400200]);
+        seed_profile_snapshot(directory.path(), "new123", 2, &[402700]);
+        let profile = two_member_profile();
+        for error in [
+            load_party_servant_data(directory.path(), Region::Cn, &profile).err(),
+            load_support_servant_data(directory.path(), Region::Cn, &profile).err(),
+            load_profile_servant_data(directory.path(), Region::Cn, &profile).err(),
+        ] {
+            assert!(format!("{:#}", error.unwrap()).contains("sync-data --profile"));
+        }
+    }
+
+    #[test]
+    fn selected_profile_snapshot_corruption_does_not_fall_back() {
+        let directory = tempfile::tempdir().unwrap();
+        seed_profile_snapshot(directory.path(), "old123", 1, &[400200, 402700]);
+        let profile = two_member_profile();
+        for (id, corruption) in [(400200, "json"), (400200, "source"), (402700, "template")] {
+            let folder = seed_profile_snapshot(directory.path(), "new123", 2, &[400200, 402700]);
+            let path = folder.join(format!("details-v3/{id}.json"));
+            let mut detail = ServantDetail::load(&path).unwrap();
+            match corruption {
+                "json" => fs::write(&path, b"invalid JSON").unwrap(),
+                "source" => {
+                    detail.source.data_hash = "wrong123".into();
+                    write_json(&path, &detail).unwrap();
+                }
+                "template" => {
+                    fs::remove_file(
+                        folder
+                            .join("details-v3")
+                            .join(&detail.command_cards[0].template_file),
+                    )
+                    .unwrap();
+                }
+                _ => unreachable!(),
+            }
+            assert!(load_profile_servant_data(directory.path(), Region::Cn, &profile).is_err());
+        }
+    }
+
     #[test]
     fn region_is_case_insensitive_and_defaults_to_cn() {
         assert_eq!(Region::default(), Region::Cn);
@@ -1525,6 +1706,7 @@ mod tests {
 
         let mut profile = PartyProfile::default();
         profile.servants.truncate(1);
+        profile.support_candidates.clear();
         let party_data = load_party_servant_data(directory.path(), Region::Cn, &profile).unwrap();
         assert_eq!(party_data.len(), 1);
         assert_eq!(party_data[0].slot, PartySlot::One);

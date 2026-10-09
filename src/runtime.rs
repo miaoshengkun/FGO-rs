@@ -7,7 +7,9 @@ use crate::{
     device::{Device, FrameSource, InputSink, SplitDevice},
     domain::{Command, Scene, VerificationStatus},
     executor::Executor,
-    farming::{Apple, FarmDriver, FarmPort, FarmSession, FarmState, RequiredFarmFacts},
+    farming::{
+        Apple, FarmDriver, FarmPort, FarmSession, FarmState, FixedFarmConfig, RequiredFarmFacts,
+    },
     observation::{FieldEvidence, Observation, SceneFacts},
     profile::{PartyProfile, RIDER_PROFILE_V1},
     verification::{ActionVerificationContext, VerificationOrigin},
@@ -237,6 +239,11 @@ pub trait EventSink: Send {
     fn emit(&mut self, event: RuntimeEvent) -> Result<()>;
 }
 
+/// Optional, presentation-only normalized frames. Implementations must not block.
+pub trait FrameSink: Send {
+    fn publish(&mut self, frame_id: u64, elapsed_ms: u64, frame: &RgbaImage);
+}
+
 pub struct JsonlEventSink {
     trace: Option<Box<dyn Write + Send>>,
 }
@@ -267,6 +274,7 @@ pub struct Host {
     mapped_viewport: Option<Rect>,
     execute: bool,
     events: Box<dyn EventSink>,
+    frame_sink: Option<Box<dyn FrameSink>>,
     recording: Option<PathBuf>,
     frame_count: u64,
     event_count: u64,
@@ -317,6 +325,7 @@ impl Host {
             mapped_viewport: None,
             execute,
             events,
+            frame_sink: None,
             recording: None,
             frame_count: 0,
             event_count: 0,
@@ -430,7 +439,19 @@ impl Host {
             canvas_height: vision::HEIGHT,
             normalizer: "center_crop_16_9_catmull_rom_v1",
             file,
-        })
+        })?;
+        if let Some(sink) = &mut self.frame_sink {
+            sink.publish(
+                self.frame_count,
+                self.control.elapsed().as_millis() as u64,
+                self.frame.as_ref().unwrap(),
+            );
+        }
+        Ok(())
+    }
+
+    pub fn set_frame_sink(&mut self, sink: Box<dyn FrameSink>) {
+        self.frame_sink = Some(sink);
     }
 
     pub fn record_frames(&mut self, path: PathBuf) -> Result<()> {
@@ -450,6 +471,39 @@ impl Host {
         self.farm.apple = apple;
     }
 
+    pub fn configure_fixed_farm(&mut self, config: FixedFarmConfig) -> Result<()> {
+        config.validate()?;
+        self.farm.fixed = Some(config);
+        self.vision.fixed_farm = true;
+        self.vision.farm_templates = None;
+        self.profile_markers.clear();
+        self.vision.configure_card_identities(Vec::new(), None)?;
+        self.vision.configure_support_identities(Vec::new())?;
+        self.noble_phantasm_colors = [None; 6];
+        self.atlas_noble_phantasm_colors.clear();
+        Ok(())
+    }
+
+    fn run_default_farm(&mut self) -> Result<()> {
+        let config = self
+            .farm
+            .fixed
+            .context("fixed-position farming is not configured")?;
+        self.log(&format!("Fixed-position farming: quest ({}, {}), team {}, first support; automatic servant skills, default NP/card strategy", config.quest.x, config.quest.y, config.team))?;
+        while self.farming(|driver| driver.enter())? {
+            // Repeat can skip the formation screen (and StartBattle command).
+            if self.battle.reset() {
+                self.record_battle_progress()?;
+            }
+            BattleDriver { port: self }.fight_default()?;
+            self.farming(|driver| driver.finish())?;
+        }
+        self.log(&format!(
+            "Farming stopped: {} battles, {} apples remaining",
+            self.farm.completed, self.farm.apples_remaining
+        ))
+    }
+
     pub fn configure_profile(&mut self, profile: PartyProfile) -> Result<()> {
         profile.validate()?;
         let markers = profile.required_markers();
@@ -466,6 +520,8 @@ impl Host {
             missing.join(", ")
         );
         self.vision.farm_templates = profile.farm_templates.clone();
+        self.vision.fixed_farm = false;
+        self.farm.fixed = None;
         self.profile = profile;
         self.profile_markers = markers;
         Ok(())
@@ -663,6 +719,9 @@ impl BattlePort for Host {
     }
     fn frontline(&self) -> [Option<crate::domain::PartySlot>; 3] {
         self.battle.progress().frontline()
+    }
+    fn roster_ready(&self) -> bool {
+        self.battle.roster_ready()
     }
     fn noble_phantasm_color(&self, identity: crate::domain::PartySlot) -> Option<Color> {
         self.noble_phantasm_colors[identity.index()]
@@ -1081,6 +1140,21 @@ impl Runtime {
                 .is_empty()
         }));
         Self { engine, host }
+    }
+
+    pub fn run_default_farm(&self) -> Result<()> {
+        let mut host = self
+            .host
+            .lock()
+            .map_err(|_| anyhow::anyhow!("host lock poisoned"))?;
+        let result = host.run_default_farm();
+        if let Err(error) = &result {
+            let _ = host.record(Action::Error {
+                phase: "default_farm",
+                message: format!("{error:#}"),
+            });
+        }
+        result
     }
 
     pub fn run(&self, source: &str) -> Result<()> {

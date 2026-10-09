@@ -60,6 +60,21 @@
       "file": "live-confirm-master.png",
       "scene": "skill_confirmation",
       "cards_complete": false
+    },
+    {
+      "file": "live-saber-roster-fade.png",
+      "scene": "battle_turn",
+      "cards_complete": false
+    },
+    {
+      "file": "live-saber-roster-stable.png",
+      "scene": "battle_turn",
+      "cards_complete": false
+    },
+    {
+      "file": "live-saber-roster-cards.png",
+      "scene": "command_cards",
+      "cards_complete": true
     }
   ]
 }

@@ -27,6 +27,7 @@ struct Port {
     requested_facts: Vec<RequiredBattleFacts>,
     expected_scenes: Vec<Vec<fgo_rs::domain::Scene>>,
     frame_id: u64,
+    roster_ready_after: u64,
     profile: PartyProfile,
     progress: Option<fgo_rs::battle::BattleProgress>,
     frontline: Option<[Option<PartySlot>; 3]>,
@@ -102,6 +103,9 @@ impl BattlePort for Port {
     fn battle_progress(&self) -> Option<fgo_rs::battle::BattleProgress> {
         self.progress.clone()
     }
+    fn roster_ready(&self) -> bool {
+        self.frame_id > self.roster_ready_after
+    }
     fn profile(&self) -> &PartyProfile {
         &self.profile
     }
@@ -148,6 +152,301 @@ fn cards() -> BattleState {
 fn marked(mut state: BattleState, markers: &[&str]) -> BattleState {
     state.markers = markers.iter().map(|name| (*name).to_owned()).collect();
     state
+}
+
+#[test]
+fn default_battle_casts_current_frontline_skills_before_nps_and_cards_without_profile_markers() {
+    let mut turn = BattleState {
+        turn: true,
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        np_percent: [0.into(), 100.into(), 0.into()],
+        ..Default::default()
+    };
+    turn.skills[0][0] = SkillState::Available.into();
+    let mut cooling = turn.clone();
+    cooling.skills[0][0] = SkillState::Cooldown.into();
+    let cards = BattleState {
+        np_glow: [false, true, false],
+        ..cards()
+    };
+    let mut frames = vec![turn.clone(), turn, cooling.clone()];
+    frames.extend(vec![cooling; 9]);
+    frames.extend([
+        cards.clone(),
+        cards,
+        BattleState::default(),
+        BattleState::default(),
+        BattleState {
+            victory: true,
+            ..Default::default()
+        },
+    ]);
+    let mut port = Port::new(frames);
+    // A configured Rider strategy must not leak into this independent mode.
+    port.profile.enemy_target = EnemyTargetStrategy::HighestHp;
+    port.driver().fight_default().unwrap();
+    assert_eq!(
+        port.commands,
+        vec![
+            Command::CastServantSkill {
+                servant: FieldSlot::One,
+                skill: SkillSlot::One,
+                target: fgo_rs::domain::Target::Ally {
+                    slot: FieldSlot::One
+                },
+                strict: false,
+            },
+            Command::Attack { opening: false },
+            Command::SelectCards,
+        ]
+    );
+    assert_eq!(port.taps.len(), 5);
+    assert_eq!(
+        port.taps[0],
+        fgo_rs::layout::UI_LAYOUT_V1.battle.servant_skills[0][0]
+    );
+    assert_eq!(port.taps[1], fgo_rs::layout::UI_LAYOUT_V1.battle.attack);
+    assert_eq!(
+        port.taps[2],
+        fgo_rs::layout::UI_LAYOUT_V1.battle.noble_phantasms[1]
+    );
+    assert!(
+        port.requested_facts
+            .iter()
+            .all(|facts| !facts.contains(RequiredBattleFacts::MARKERS)
+                && !facts.contains(RequiredBattleFacts::ENEMIES))
+    );
+    assert!(
+        port.requested_facts
+            .iter()
+            .any(|facts| facts.contains(RequiredBattleFacts::SKILLS))
+    );
+}
+
+#[test]
+fn default_battle_ignores_bright_np_slots_without_confirmed_charge() {
+    let turn = BattleState {
+        turn: true,
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        // Two surviving servants and one empty slot. NP glow alone must not
+        // turn any of these into a ready NP, even with stale party identities.
+        np_percent: [
+            85.into(),
+            19.into(),
+            Recognition::unknown(UnknownReason::NoCandidate, None),
+        ],
+        ..Default::default()
+    };
+    let mut frames = vec![turn; 11];
+    frames.extend([
+        cards(),
+        cards(),
+        BattleState::default(),
+        BattleState::default(),
+        BattleState {
+            victory: true,
+            ..Default::default()
+        },
+    ]);
+    let mut port = Port::new(frames);
+    port.driver().fight_default().unwrap();
+    assert_eq!(
+        port.commands,
+        [Command::Attack { opening: false }, Command::SelectCards]
+    );
+    assert_eq!(port.taps.len(), 4);
+    assert!(port.taps[1..].iter().all(|point| {
+        fgo_rs::layout::UI_LAYOUT_V1
+            .battle
+            .face_cards
+            .contains(point)
+    }));
+    assert!(
+        port.requested_facts
+            .iter()
+            .any(|facts| facts.contains(RequiredBattleFacts::NP))
+    );
+}
+
+#[test]
+fn default_skills_skip_unknown_and_disabled_and_target_each_current_caster() {
+    let mut state = BattleState {
+        turn: true,
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        ..Default::default()
+    };
+    state.skills[0][0] = Recognition::unknown(UnknownReason::NoCandidate, None);
+    state.skills[0][1] = SkillState::Disabled.into();
+    for slot in 0..3 {
+        state.skills[slot][2] = SkillState::Available.into();
+    }
+    let mut frames = Vec::new();
+    for slot in 0..3 {
+        frames.extend(vec![state.clone(); 3]);
+        frames.push(BattleState {
+            target_count: 3,
+            ..Default::default()
+        });
+        state.skills[slot][2] = SkillState::Cooldown.into();
+        frames.push(state.clone());
+    }
+    let mut port = Port::new(frames);
+    // Automatic skills use visible field positions, including replacements,
+    // rather than original party identities or the profile's support target.
+    port.frontline = Some([None; 3]);
+    assert_eq!(port.driver().cast_default_skills().unwrap(), 3);
+    for (index, command) in port.commands.iter().enumerate() {
+        let slot = FieldSlot::try_from(index + 1).unwrap();
+        assert_eq!(
+            *command,
+            Command::CastServantSkill {
+                servant: slot,
+                skill: SkillSlot::Three,
+                target: fgo_rs::domain::Target::Ally { slot },
+                strict: false,
+            }
+        );
+        assert_eq!(
+            port.taps[index * 2 + 1],
+            fgo_rs::layout::UI_LAYOUT_V1.battle.ally_targets[index]
+        );
+    }
+    assert!(
+        port.logs
+            .iter()
+            .any(|line| line.contains("servant 1 skill 1: readiness unknown"))
+    );
+}
+
+#[test]
+fn default_skills_refresh_readiness_after_a_cooldown_change() {
+    let mut state = BattleState {
+        turn: true,
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        ..Default::default()
+    };
+    state.skills[0][0] = SkillState::Available.into();
+    let mut changed = state.clone();
+    changed.skills[0][0] = SkillState::Cooldown.into();
+    changed.skills[0][1] = SkillState::Available.into();
+    let mut cooling = changed.clone();
+    cooling.skills[0][1] = SkillState::Cooldown.into();
+    let mut port = Port::new(vec![state, changed.clone(), changed, cooling]);
+    assert_eq!(port.driver().cast_default_skills().unwrap(), 2);
+    assert!(matches!(
+        port.commands[1],
+        Command::CastServantSkill {
+            skill: SkillSlot::Two,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn default_skills_confirm_once_then_select_caster_and_verify_cooldown() {
+    let state = BattleState {
+        turn: true,
+        skills: [[SkillState::Available.into(); 3]; 3],
+        ..Default::default()
+    };
+    let cooling = BattleState {
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        ..state.clone()
+    };
+    let mut port = Port::new(vec![
+        state,
+        skill_confirmation(),
+        skill_confirmation(),
+        BattleState {
+            target_count: 3,
+            ..Default::default()
+        },
+        cooling,
+    ]);
+    assert!(!port.profile.confirm_skill_use);
+    assert_eq!(port.driver().cast_default_skills().unwrap(), 1);
+    assert_eq!(
+        port.commands
+            .iter()
+            .filter(|command| **command == Command::ConfirmSkill)
+            .count(),
+        1
+    );
+    assert_eq!(
+        port.taps,
+        vec![
+            fgo_rs::layout::UI_LAYOUT_V1.battle.servant_skills[0][0],
+            fgo_rs::layout::UI_LAYOUT_V1.battle.skill_confirm,
+            fgo_rs::layout::UI_LAYOUT_V1.battle.ally_targets[0],
+        ]
+    );
+}
+
+#[test]
+fn default_skill_failure_stops_before_attack_and_never_retries_cast_or_confirmation() {
+    for after_click in [
+        BattleState {
+            turn: true,
+            skills: [[SkillState::Available.into(); 3]; 3],
+            ..Default::default()
+        },
+        skill_confirmation(),
+    ] {
+        let before = BattleState {
+            turn: true,
+            skills: [[SkillState::Available.into(); 3]; 3],
+            ..Default::default()
+        };
+        let mut port = Port::new(vec![before.clone(), before, after_click]);
+        assert!(port.driver().fight_default().is_err());
+        assert_eq!(
+            port.commands
+                .iter()
+                .filter(|command| matches!(command, Command::CastServantSkill { .. }))
+                .count(),
+            1
+        );
+        assert!(
+            port.commands
+                .iter()
+                .filter(|command| **command == Command::ConfirmSkill)
+                .count()
+                <= 1
+        );
+        assert!(
+            !port
+                .commands
+                .iter()
+                .any(|command| matches!(command, Command::Attack { .. }))
+        );
+    }
+    let mut port = Port::new(vec![skill_confirmation()]);
+    assert!(port.driver().cast_default_skills().is_err());
+    assert!(port.taps.is_empty());
+    assert!(port.commands.is_empty());
+}
+
+#[test]
+fn default_battle_keeps_unknown_card_and_defeat_stops() {
+    let mut incomplete = cards();
+    incomplete.colors[0] = None;
+    let mut frames = vec![
+        BattleState {
+            turn: true,
+            ..Default::default()
+        };
+        11
+    ];
+    frames.push(incomplete);
+    let mut port = Port::new(frames);
+    assert!(port.driver().fight_default().is_err());
+    assert_eq!(port.taps, vec![fgo_rs::layout::UI_LAYOUT_V1.battle.attack]);
+    let mut port = Port::new(vec![BattleState {
+        defeated: true,
+        ..Default::default()
+    }]);
+    assert!(port.driver().fight_default().is_err());
+    assert!(port.taps.is_empty());
 }
 
 #[test]
@@ -215,6 +514,33 @@ fn unknown_skill_state_stops_before_input_even_when_optional() {
     assert!(error.to_string().contains("state is unknown"));
     assert!(port.taps.is_empty());
     assert!(port.commands.is_empty());
+}
+
+#[test]
+fn unsettled_roster_times_out_before_skill_or_attack_input() {
+    for attack in [false, true] {
+        let mut port = Port::new(vec![idle()]);
+        port.roster_ready_after = u64::MAX;
+        let result = if attack {
+            port.driver().attack(false)
+        } else {
+            port.driver().cast_skill(1, 1, true).map(|_| ())
+        };
+        assert!(result.unwrap_err().to_string().contains("timed out"));
+        assert!(port.taps.is_empty());
+        assert!(port.commands.is_empty());
+        assert!(port.time >= 45000);
+    }
+}
+
+#[test]
+fn waiting_for_next_turn_waits_for_roster_confirmation() {
+    let mut port = Port::new(vec![idle()]);
+    port.roster_ready_after = 2;
+    assert!(port.driver().wait_next().unwrap());
+    assert_eq!(port.frame_id, 3);
+    assert_eq!(port.time, 300);
+    assert!(port.taps.is_empty());
 }
 
 #[test]

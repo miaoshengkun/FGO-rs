@@ -6,7 +6,26 @@ use crate::{
     vision::Point,
 };
 use anyhow::{Context, Result, bail, ensure};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Coordinates use the same normalized canvas as recognition and input mapping.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct FixedFarmConfig {
+    pub quest: Point,
+    /// Left to right, like FGO-py. Zero preserves the game's current formation.
+    pub team: u8,
+}
+
+impl FixedFarmConfig {
+    pub fn validate(self) -> Result<()> {
+        ensure!(
+            self.quest.x < 1280 && self.quest.y < 720,
+            "quest point outside 1280x720"
+        );
+        ensure!(self.team <= 15, "team index must be 0..15");
+        Ok(())
+    }
+}
 
 pub use crate::domain::Apple;
 
@@ -20,6 +39,7 @@ impl RequiredFarmFacts {
     pub const SUPPORT: Self = Self(1 << 1);
     pub const FORMATION: Self = Self(1 << 2);
     pub const APPLE: Self = Self(1 << 3);
+    pub const TEAM: Self = Self(1 << 4);
     pub const ALL: Self = Self((1 << 4) - 1);
 
     pub const fn contains(self, required: Self) -> bool {
@@ -65,6 +85,8 @@ pub struct FarmState {
     pub refresh_confirm: bool,
     pub formation: bool,
     pub level120: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_index: Option<u8>,
     pub turn: bool,
     pub ap_empty: bool,
     pub apple_confirm: Option<Apple>,
@@ -160,6 +182,8 @@ pub trait FarmPort: Executor {
 
 #[derive(Debug, Serialize)]
 pub struct FarmSession {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixed: Option<FixedFarmConfig>,
     pub max_battles: u32,
     pub completed: u32,
     pub apples_remaining: u32,
@@ -172,6 +196,7 @@ const SUPPORT_SCROLLS_PER_REFRESH: usize = 5;
 impl Default for FarmSession {
     fn default() -> Self {
         Self {
+            fixed: None,
             max_battles: 1,
             completed: 0,
             apples_remaining: 0,
@@ -255,40 +280,68 @@ impl<P: FarmPort + ?Sized> FarmDriver<'_, P> {
         if self.session.max_battles > 0 && self.session.completed >= self.session.max_battles {
             return Ok(false);
         }
-        let entry_facts = RequiredFarmFacts::QUEST.union(RequiredFarmFacts::FORMATION);
+        let fixed = self.session.fixed;
+        if let Some(config) = fixed {
+            config.validate()?;
+        }
+        let formation_facts = match fixed {
+            Some(config) if config.team > 0 => RequiredFarmFacts::TEAM,
+            Some(_) => RequiredFarmFacts::default(),
+            None => RequiredFarmFacts::FORMATION,
+        };
+        let entry_facts = if fixed.is_some() {
+            formation_facts
+        } else {
+            RequiredFarmFacts::QUEST.union(formation_facts)
+        };
         let mut s = self.observe(entry_facts)?;
         if s.event && s.menu && !s.quest_confirm {
-            let mut found = false;
-            for swipe in [
-                UI_LAYOUT_V1.farm.quest_scroll_down,
-                UI_LAYOUT_V1.farm.quest_scroll_up,
-            ] {
-                for _ in 0..12 {
-                    if s.quest.is_some()
-                        && let Some(point) = self.stable_quest(&mut s, entry_facts)?
-                    {
-                        self.port.command(Command::SelectQuest)?;
-                        self.port.tap(point)?;
-                        found = true;
+            if let Some(config) = fixed {
+                ensure!(
+                    s.scene_candidates() == [Scene::QuestList],
+                    "fixed quest selection requires a recognized quest list"
+                );
+                self.port.sleep(300)?;
+                s = self.observe(entry_facts)?;
+                ensure!(
+                    s.scene_candidates() == [Scene::QuestList],
+                    "quest list changed before fixed-position selection"
+                );
+                self.port.command(Command::SelectQuest)?;
+                self.port.tap(config.quest)?;
+            } else {
+                let mut found = false;
+                for swipe in [
+                    UI_LAYOUT_V1.farm.quest_scroll_down,
+                    UI_LAYOUT_V1.farm.quest_scroll_up,
+                ] {
+                    for _ in 0..12 {
+                        if s.quest.is_some()
+                            && let Some(point) = self.stable_quest(&mut s, entry_facts)?
+                        {
+                            self.port.command(Command::SelectQuest)?;
+                            self.port.tap(point)?;
+                            found = true;
+                            break;
+                        }
+                        self.swipe(swipe)?;
+                        self.port.sleep(400)?;
+                        s = self.observe(entry_facts)?;
+                        ensure!(
+                            s.event && s.menu,
+                            "left configured event while finding quest"
+                        );
+                    }
+                    if found {
                         break;
                     }
-                    self.swipe(swipe)?;
-                    self.port.sleep(400)?;
-                    s = self.observe(entry_facts)?;
-                    ensure!(
-                        s.event && s.menu,
-                        "left configured event while finding quest"
-                    );
                 }
-                if found {
-                    break;
-                }
+                ensure!(found, "configured quest not found in event list");
             }
-            ensure!(found, "configured quest not found in event list");
             s = self.wait(
                 "quest confirmation / AP prompt",
                 15000,
-                RequiredFarmFacts::FORMATION,
+                formation_facts,
                 |s| s.quest_confirm || s.ready(),
             )?;
         }
@@ -303,7 +356,7 @@ impl<P: FarmPort + ?Sized> FarmDriver<'_, P> {
             s = self.wait(
                 "quest loading / AP prompt",
                 45000,
-                RequiredFarmFacts::FORMATION,
+                formation_facts,
                 FarmState::ready,
             )?;
         }
@@ -315,12 +368,9 @@ impl<P: FarmPort + ?Sized> FarmDriver<'_, P> {
             if !self.restore_ap()? {
                 return Ok(false);
             }
-            s = self.wait(
-                "AP recovery outcome",
-                45000,
-                RequiredFarmFacts::FORMATION,
-                |s| (s.ready() || s.quest_confirm) && s.apple_confirm.is_none(),
-            )?;
+            s = self.wait("AP recovery outcome", 45000, formation_facts, |s| {
+                (s.ready() || s.quest_confirm) && s.apple_confirm.is_none()
+            })?;
             // The game returns to the quest confirmation dialog after an AP
             // recovery made from that dialog. Confirm the quest again before
             // continuing into support/formation.
@@ -331,22 +381,45 @@ impl<P: FarmPort + ?Sized> FarmDriver<'_, P> {
                 s = self.wait(
                     "quest loading after AP recovery",
                     45000,
-                    RequiredFarmFacts::FORMATION,
+                    formation_facts,
                     FarmState::ready,
                 )?;
             }
         }
         if s.list() {
             self.select_support()?;
-            s = self.wait("formation", 90000, RequiredFarmFacts::FORMATION, |s| {
+            s = self.wait("formation", 90000, formation_facts, |s| {
                 s.formation || s.turn
             })?;
         }
         if s.formation {
-            ensure!(
-                s.level120,
-                "formation slot 3 is not recognized as level 120"
-            );
+            if let Some(config) = fixed {
+                if config.team > 0 {
+                    ensure!(
+                        s.team_index.is_some(),
+                        "team selector is unavailable or unrecognized; use team 0 for a locked formation"
+                    );
+                    if s.team_index != Some(config.team) {
+                        self.port
+                            .command(Command::SelectTeam { index: config.team })?;
+                        self.port
+                            .tap(UI_LAYOUT_V1.farm.formation_teams[usize::from(config.team - 1)])?;
+                        self.port.sleep(500)?;
+                    }
+                    // Confirm the requested tab on fresh frames before starting.
+                    for _ in 0..2 {
+                        self.wait("selected team", 10000, RequiredFarmFacts::TEAM, |s| {
+                            s.formation && s.team_index == Some(config.team)
+                        })?;
+                        self.port.sleep(200)?;
+                    }
+                }
+            } else {
+                ensure!(
+                    s.level120,
+                    "formation slot 3 is not recognized as level 120"
+                );
+            }
             self.port.command(Command::StartBattle)?;
             self.port.tap(UI_LAYOUT_V1.farm.formation_start)?;
             self.port.sleep(1500)?;
@@ -364,16 +437,34 @@ impl<P: FarmPort + ?Sized> FarmDriver<'_, P> {
     }
 
     pub fn select_support(&mut self) -> Result<()> {
+        let fixed = self.session.fixed.is_some();
         let mut refreshes = 0;
         let mut last_refresh = None;
         loop {
             let mut s = self.wait(
                 "support list",
                 45000,
-                RequiredFarmFacts::SUPPORT,
+                if fixed {
+                    RequiredFarmFacts::default()
+                } else {
+                    RequiredFarmFacts::SUPPORT
+                },
                 FarmState::list,
             )?;
             if s.support {
+                if fixed {
+                    self.port.command(Command::SelectFirstSupport)?;
+                    self.port.tap(UI_LAYOUT_V1.farm.first_support)?;
+                    self.port.sleep(800)?;
+                    self.wait(
+                        "first support / formation",
+                        90000,
+                        RequiredFarmFacts::default(),
+                        |s| s.formation || s.turn,
+                    )?;
+                    self.port.log("Selected first support")?;
+                    return Ok(());
+                }
                 self.port.tap(
                     s.support_filter
                         .unwrap_or(UI_LAYOUT_V1.farm.support_rider_filter),
@@ -427,7 +518,12 @@ impl<P: FarmPort + ?Sized> FarmDriver<'_, P> {
             }
             ensure!(
                 refreshes < self.session.refresh_limit,
-                "no level 120 friend after {refreshes} refreshes"
+                "no {} after {refreshes} refreshes",
+                if fixed {
+                    "available support"
+                } else {
+                    "level 120 friend"
+                }
             );
             if let Some(last) = last_refresh {
                 let elapsed = self.port.elapsed_ms() - last;

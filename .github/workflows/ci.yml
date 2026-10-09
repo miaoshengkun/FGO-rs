@@ -15,3 +15,6 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cargo build --locked --release
+      - run: cargo clippy --locked --all-targets --features gui,maa -- -D warnings
+      - run: cargo test --locked --features gui,maa
+      - run: cargo build --locked --release --features gui,maa

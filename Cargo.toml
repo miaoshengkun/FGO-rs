@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.98"
 license = "AGPL-3.0-only"
 description = "Cross-platform FGO automation core with Rhai strategies"
+default-run = "fgo-rs"
 
 [dependencies]
 anyhow = "1"
@@ -17,12 +18,22 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 ureq = { version = "3", default-features = false, features = ["gzip", "rustls"] }
 maa-framework = { version = "=1.25.2", optional = true, default-features = false, features = ["dynamic"] }
 tempfile = { version = "3", optional = true }
+slint = { version = "=1.18.1", optional = true, default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software", "accessibility"] }
+
+[build-dependencies]
+slint-build = { version = "=1.18.1", optional = true }
 
 [features]
 maa = ["dep:maa-framework", "dep:tempfile"]
+gui = ["dep:slint", "dep:slint-build"]
 
 [dev-dependencies]
 tempfile = "3"
+
+[[bin]]
+name = "fgo-rs-gui"
+path = "src/bin/gui.rs"
+required-features = ["gui"]
 
 [profile.dev]
 opt-level = 1
