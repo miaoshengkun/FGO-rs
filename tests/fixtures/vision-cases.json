@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "file": "step4.png",
+      "scene": "battle_turn",
+      "cards_complete": false
+    },
+    {
+      "file": "step7.png",
+      "scene": "order_change",
+      "cards_complete": false
+    },
+    {
+      "file": "step12.png",
+      "scene": "command_cards",
+      "cards_complete": true
+    },
+    {
+      "file": "live-target.png",
+      "scene": "skill_target",
+      "cards_complete": false
+    },
+    {
+      "file": "live-enemy-details.png",
+      "scene": "unexpected_dialog",
+      "cards_complete": false
+    },
+    {
+      "file": "live-bond-result.png",
+      "scene": "victory",
+      "cards_complete": false
+    },
+    {
+      "file": "live-skill-confirm.png",
+      "scene": "skill_confirmation",
+      "cards_complete": false
+    },
+    {
+      "file": "live-speed-normal.png",
+      "scene": "command_cards",
+      "cards_complete": true
+    },
+    {
+      "file": "live-speed-double.png",
+      "scene": "command_cards",
+      "cards_complete": true
+    },
+    {
+      "file": "live-confirm-servant.png",
+      "scene": "skill_confirmation",
+      "cards_complete": false
+    },
+    {
+      "file": "live-confirm-order.png",
+      "scene": "skill_confirmation",
+      "cards_complete": false
+    },
+    {
+      "file": "live-confirm-master.png",
+      "scene": "skill_confirmation",
+      "cards_complete": false
+    }
+  ]
+}

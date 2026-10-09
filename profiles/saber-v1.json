@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "cn-saber-grand-vii",
+  "enemy_target": "current",
+  "farm_templates": {
+    "event": "saber_event",
+    "quest": "saber_quest_vii",
+    "formation_support": "formation_iori120",
+    "support_filter": "saber_filter",
+    "support_tab": "saber_tab",
+    "support_name": "support_iori_name",
+    "support_level": "saber_support_level120"
+  },
+  "cards": {
+    "noble_phantasm_order": ["three", "five", "two", "one", "four", "six"],
+    "infer_unknown_support_cards": true
+  },
+  "servants": [
+    { "slot": "one", "atlas_id": 101800 },
+    { "slot": "two", "atlas_id": 103700 },
+    { "slot": "four", "atlas_id": 105600 },
+    { "slot": "five", "atlas_id": 100600 },
+    { "slot": "six", "atlas_id": 103600 }
+  ],
+  "support_candidates": [{ "atlas_id": 106000 }],
+  "opening_markers": ["altera_slot_1", "benienma_slot_2", "iori_slot_3", "iori_level120_slot_3", "support_slot_3"],
+  "support_marker": "support_slot_3",
+  "support_field": "three",
+  "opening_skills_ready": [
+    { "servant": "one", "skill": "one" },
+    { "servant": "one", "skill": "three" }
+  ],
+  "order_change": {
+    "master_skill": "three",
+    "field": "one",
+    "reserve": "five",
+    "before_markers": ["altera_slot_1", "iori_slot_3", "support_slot_3"],
+    "after_markers": ["nero_bride_slot_1", "iori_slot_3", "support_slot_3"]
+  }
+}

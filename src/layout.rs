@@ -1,0 +1,543 @@
+use crate::vision::{Point, Rect};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Swipe {
+    pub from: Point,
+    pub to: Point,
+    pub duration_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BattleLayout {
+    pub enemy_hp_standard: [Rect; 3],
+    pub enemy_charge_standard: [Rect; 3],
+    pub enemy_indicators_standard: [Rect; 3],
+    pub enemy_targets_standard: [Point; 3],
+    pub enemy_hp_six: [Rect; 6],
+    pub enemy_charge_six: [Rect; 6],
+    pub enemy_indicators_six: [Rect; 6],
+    pub enemy_targets_six: [Point; 6],
+    pub ally_hp: [Rect; 3],
+    pub np_percent: [Rect; 3],
+    pub field_portraits: [Rect; 3],
+    pub support_marks: [Rect; 3],
+    pub skill_confirm: Point,
+    pub master_toggle: Point,
+    pub servant_skills: [[Point; 3]; 3],
+    pub ally_target_merged: Point,
+    pub ally_targets: [Point; 3],
+    pub master_skills: [Point; 3],
+    pub order_members: [Point; 6],
+    pub order_confirm: Point,
+    pub attack: Point,
+    pub command_back: Point,
+    pub speed_toggle: Point,
+    pub speed_arrows: Rect,
+    pub face_cards: [Point; 5],
+    pub card_identity_searches: [Rect; 5],
+    pub card_group_patches: [Rect; 5],
+    pub card_group_searches: [Rect; 5],
+    pub noble_phantasms: [Point; 3],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct FarmLayout {
+    pub quest_scroll_down: Swipe,
+    pub quest_scroll_up: Swipe,
+    pub dialog_confirm: Point,
+    pub repeat_confirm: Point,
+    pub dialog_cancel: Point,
+    pub formation_start: Point,
+    pub support_rider_filter: Point,
+    pub support_scroll: Swipe,
+    pub support_refresh: Point,
+    pub ap_close: Point,
+    pub apple_scroll_top: Swipe,
+    pub apple_scroll_bottom: Swipe,
+    pub apple_choices: [Point; 3],
+    pub apple_minimum: Point,
+    pub apple_confirm: Point,
+    pub decline_friend: Point,
+    pub close_special_drop: Point,
+    pub settlement_next: Point,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct UiLayout {
+    pub schema: u32,
+    pub battle: BattleLayout,
+    pub farm: FarmLayout,
+}
+
+pub const UI_LAYOUT_V1: UiLayout = UiLayout {
+    schema: 1,
+    battle: BattleLayout {
+        enemy_hp_standard: [
+            Rect {
+                x: 100,
+                y: 40,
+                width: 122,
+                height: 25,
+            },
+            Rect {
+                x: 350,
+                y: 40,
+                width: 122,
+                height: 25,
+            },
+            Rect {
+                x: 600,
+                y: 40,
+                width: 122,
+                height: 25,
+            },
+        ],
+        enemy_charge_standard: [
+            Rect {
+                x: 160,
+                y: 67,
+                width: 90,
+                height: 21,
+            },
+            Rect {
+                x: 410,
+                y: 67,
+                width: 90,
+                height: 21,
+            },
+            Rect {
+                x: 660,
+                y: 67,
+                width: 90,
+                height: 21,
+            },
+        ],
+        enemy_indicators_standard: [
+            Rect {
+                x: 5,
+                y: 0,
+                width: 75,
+                height: 65,
+            },
+            Rect {
+                x: 255,
+                y: 0,
+                width: 75,
+                height: 65,
+            },
+            Rect {
+                x: 505,
+                y: 0,
+                width: 75,
+                height: 65,
+            },
+        ],
+        enemy_targets_standard: [
+            Point { x: 142, y: 40 },
+            Point { x: 342, y: 40 },
+            Point { x: 542, y: 40 },
+        ],
+        enemy_hp_six: [
+            Rect {
+                x: 190,
+                y: 28,
+                width: 97,
+                height: 25,
+            },
+            Rect {
+                x: 390,
+                y: 28,
+                width: 97,
+                height: 25,
+            },
+            Rect {
+                x: 590,
+                y: 28,
+                width: 97,
+                height: 25,
+            },
+            Rect {
+                x: 90,
+                y: 127,
+                width: 97,
+                height: 25,
+            },
+            Rect {
+                x: 290,
+                y: 127,
+                width: 97,
+                height: 25,
+            },
+            Rect {
+                x: 490,
+                y: 127,
+                width: 97,
+                height: 25,
+            },
+        ],
+        enemy_charge_six: [
+            Rect {
+                x: 231,
+                y: 49,
+                width: 80,
+                height: 23,
+            },
+            Rect {
+                x: 431,
+                y: 49,
+                width: 80,
+                height: 23,
+            },
+            Rect {
+                x: 631,
+                y: 49,
+                width: 80,
+                height: 23,
+            },
+            Rect {
+                x: 131,
+                y: 148,
+                width: 80,
+                height: 23,
+            },
+            Rect {
+                x: 331,
+                y: 148,
+                width: 80,
+                height: 23,
+            },
+            Rect {
+                x: 531,
+                y: 148,
+                width: 80,
+                height: 23,
+            },
+        ],
+        enemy_indicators_six: [
+            Rect {
+                x: 105,
+                y: 0,
+                width: 75,
+                height: 55,
+            },
+            Rect {
+                x: 305,
+                y: 0,
+                width: 75,
+                height: 55,
+            },
+            Rect {
+                x: 505,
+                y: 0,
+                width: 75,
+                height: 55,
+            },
+            Rect {
+                x: 5,
+                y: 95,
+                width: 75,
+                height: 55,
+            },
+            Rect {
+                x: 205,
+                y: 95,
+                width: 75,
+                height: 55,
+            },
+            Rect {
+                x: 405,
+                y: 95,
+                width: 75,
+                height: 55,
+            },
+        ],
+        enemy_targets_six: [
+            Point { x: 142, y: 40 },
+            Point { x: 342, y: 40 },
+            Point { x: 542, y: 40 },
+            Point { x: 45, y: 142 },
+            Point { x: 295, y: 142 },
+            Point { x: 545, y: 142 },
+        ],
+        ally_hp: [
+            Rect {
+                x: 200,
+                y: 623,
+                width: 98,
+                height: 18,
+            },
+            Rect {
+                x: 518,
+                y: 623,
+                width: 98,
+                height: 18,
+            },
+            Rect {
+                x: 836,
+                y: 623,
+                width: 98,
+                height: 18,
+            },
+        ],
+        np_percent: [
+            Rect {
+                x: 220,
+                y: 660,
+                width: 76,
+                height: 12,
+            },
+            Rect {
+                x: 538,
+                y: 660,
+                width: 76,
+                height: 12,
+            },
+            Rect {
+                x: 856,
+                y: 660,
+                width: 76,
+                height: 12,
+            },
+        ],
+        field_portraits: [
+            Rect {
+                x: 130,
+                y: 426,
+                width: 67,
+                height: 68,
+            },
+            Rect {
+                x: 448,
+                y: 426,
+                width: 67,
+                height: 68,
+            },
+            Rect {
+                x: 766,
+                y: 426,
+                width: 67,
+                height: 68,
+            },
+        ],
+        support_marks: [
+            Rect {
+                x: 187,
+                y: 394,
+                width: 38,
+                height: 18,
+            },
+            Rect {
+                x: 505,
+                y: 394,
+                width: 38,
+                height: 18,
+            },
+            Rect {
+                x: 823,
+                y: 394,
+                width: 38,
+                height: 18,
+            },
+        ],
+        skill_confirm: Point { x: 850, y: 422 },
+        master_toggle: Point { x: 1200, y: 317 },
+        servant_skills: [
+            [
+                Point { x: 73, y: 573 },
+                Point { x: 163, y: 573 },
+                Point { x: 257, y: 573 },
+            ],
+            [
+                Point { x: 388, y: 573 },
+                Point { x: 483, y: 573 },
+                Point { x: 574, y: 573 },
+            ],
+            [
+                Point { x: 704, y: 573 },
+                Point { x: 801, y: 573 },
+                Point { x: 891, y: 573 },
+            ],
+        ],
+        ally_target_merged: Point { x: 649, y: 440 },
+        ally_targets: [
+            Point { x: 399, y: 440 },
+            Point { x: 649, y: 440 },
+            Point { x: 875, y: 440 },
+        ],
+        master_skills: [
+            Point { x: 907, y: 317 },
+            Point { x: 995, y: 317 },
+            Point { x: 1084, y: 317 },
+        ],
+        order_members: [
+            Point { x: 140, y: 360 },
+            Point { x: 340, y: 360 },
+            Point { x: 540, y: 360 },
+            Point { x: 740, y: 360 },
+            Point { x: 940, y: 360 },
+            Point { x: 1140, y: 360 },
+        ],
+        order_confirm: Point { x: 640, y: 629 },
+        attack: Point { x: 1130, y: 600 },
+        command_back: Point { x: 1210, y: 683 },
+        speed_toggle: Point { x: 1137, y: 60 },
+        speed_arrows: Rect {
+            x: 1107,
+            y: 44,
+            width: 60,
+            height: 32,
+        },
+        face_cards: [
+            Point { x: 185, y: 440 },
+            Point { x: 399, y: 440 },
+            Point { x: 649, y: 440 },
+            Point { x: 875, y: 440 },
+            Point { x: 1101, y: 440 },
+        ],
+        card_identity_searches: [
+            Rect {
+                x: 76,
+                y: 431,
+                width: 108,
+                height: 67,
+            },
+            Rect {
+                x: 333,
+                y: 431,
+                width: 108,
+                height: 67,
+            },
+            Rect {
+                x: 590,
+                y: 431,
+                width: 108,
+                height: 67,
+            },
+            Rect {
+                x: 847,
+                y: 431,
+                width: 108,
+                height: 67,
+            },
+            Rect {
+                x: 1104,
+                y: 431,
+                width: 108,
+                height: 67,
+            },
+        ],
+        card_group_patches: [
+            Rect {
+                x: 113,
+                y: 460,
+                width: 31,
+                height: 12,
+            },
+            Rect {
+                x: 370,
+                y: 460,
+                width: 31,
+                height: 12,
+            },
+            Rect {
+                x: 627,
+                y: 460,
+                width: 31,
+                height: 12,
+            },
+            Rect {
+                x: 884,
+                y: 460,
+                width: 31,
+                height: 12,
+            },
+            Rect {
+                x: 1141,
+                y: 460,
+                width: 31,
+                height: 12,
+            },
+        ],
+        card_group_searches: [
+            Rect {
+                x: 106,
+                y: 440,
+                width: 44,
+                height: 52,
+            },
+            Rect {
+                x: 363,
+                y: 440,
+                width: 44,
+                height: 52,
+            },
+            Rect {
+                x: 620,
+                y: 440,
+                width: 44,
+                height: 52,
+            },
+            Rect {
+                x: 877,
+                y: 440,
+                width: 44,
+                height: 52,
+            },
+            Rect {
+                x: 1134,
+                y: 440,
+                width: 44,
+                height: 52,
+            },
+        ],
+        noble_phantasms: [
+            Point { x: 431, y: 203 },
+            Point { x: 651, y: 203 },
+            Point { x: 845, y: 203 },
+        ],
+    },
+    farm: FarmLayout {
+        quest_scroll_down: Swipe {
+            from: Point { x: 1000, y: 550 },
+            to: Point { x: 1000, y: 250 },
+            duration_ms: 500,
+        },
+        quest_scroll_up: Swipe {
+            from: Point { x: 1000, y: 250 },
+            to: Point { x: 1000, y: 550 },
+            duration_ms: 500,
+        },
+        dialog_confirm: Point { x: 801, y: 573 },
+        repeat_confirm: Point { x: 840, y: 580 },
+        dialog_cancel: Point { x: 440, y: 573 },
+        formation_start: Point { x: 1231, y: 687 },
+        support_rider_filter: Point { x: 363, y: 130 },
+        support_scroll: Swipe {
+            from: Point { x: 400, y: 590 },
+            to: Point { x: 400, y: 290 },
+            duration_ms: 500,
+        },
+        support_refresh: Point { x: 927, y: 131 },
+        ap_close: Point { x: 640, y: 629 },
+        apple_scroll_top: Swipe {
+            from: Point { x: 850, y: 200 },
+            to: Point { x: 850, y: 550 },
+            duration_ms: 600,
+        },
+        apple_scroll_bottom: Swipe {
+            from: Point { x: 850, y: 550 },
+            to: Point { x: 850, y: 200 },
+            duration_ms: 600,
+        },
+        apple_choices: [
+            Point { x: 907, y: 317 },
+            Point { x: 875, y: 440 },
+            Point { x: 875, y: 500 },
+        ],
+        apple_minimum: Point { x: 422, y: 300 },
+        apple_confirm: Point { x: 891, y: 573 },
+        decline_friend: Point { x: 173, y: 621 },
+        close_special_drop: Point { x: 40, y: 40 },
+        settlement_next: Point { x: 1231, y: 687 },
+    },
+};

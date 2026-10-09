@@ -1,4 +1,4 @@
-use fgo_rs::{control::Control, vision::Vision};
+use fgo_rs::{control::Control, farming::RequiredFarmFacts, vision::Vision};
 use std::{path::PathBuf, time::Duration};
 
 fn fixture(name: &str) -> (Vision, image::RgbaImage, Control) {
@@ -10,6 +10,63 @@ fn fixture(name: &str) -> (Vision, image::RgbaImage, Control) {
             .to_rgba8(),
         Control::new(Duration::from_secs(30)),
     )
+}
+
+#[test]
+fn scrolling_quest_frames_do_not_confuse_vi_with_vii() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let vision = fgo_rs::vision::Vision::load(&root.join("assets/templates.json")).unwrap();
+    for (file, expected) in [
+        (
+            "quest-moving-vii-visible.png",
+            Some(fgo_rs::vision::Point { x: 876, y: 562 }),
+        ),
+        ("quest-moving-vii-outside.png", None),
+    ] {
+        let raw = image::open(root.join("tests/fixtures").join(file))
+            .unwrap()
+            .to_rgba8();
+        let frame = fgo_rs::vision::normalize(&raw, None).unwrap().0;
+        let state = vision
+            .farm_state(
+                &frame,
+                &fgo_rs::control::Control::new(std::time::Duration::from_secs(10)),
+            )
+            .unwrap();
+        assert!(state.event && state.menu);
+        assert_eq!(state.quest, expected, "{file}");
+    }
+}
+
+#[test]
+fn bond_level_up_requires_both_title_and_tap_prompt() {
+    let (vision, frame, control) = fixture("bond-level-up");
+    assert!(vision.farm_state(&frame, &control).unwrap().next);
+    for (x, y, width, height) in [(505, 100, 700, 100), (505, 630, 270, 40)] {
+        let mut covered = frame.clone();
+        for cy in y..y + height {
+            for cx in x..x + width {
+                covered.put_pixel(cx, cy, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        assert!(!vision.farm_state(&covered, &control).unwrap().next);
+    }
+}
+
+#[test]
+fn ce_reward_requires_label_and_completion_prompt() {
+    let (vision, frame, control) = fixture("bond-ce-reward");
+    let state = vision.farm_state(&frame, &control).unwrap();
+    assert!(state.special_drop && !state.next);
+    for (x, y, width, height) in [(596, 601, 88, 28), (505, 674, 270, 40)] {
+        let mut covered = frame.clone();
+        for cy in y..y + height {
+            for cx in x..x + width {
+                covered.put_pixel(cx, cy, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        assert!(!vision.farm_state(&covered, &control).unwrap().special_drop);
+    }
 }
 
 #[test]
@@ -25,11 +82,45 @@ fn live_quest_and_confirmation_are_distinct() {
 }
 
 #[test]
+fn farm_scene_only_request_skips_workflow_details() {
+    let (vision, frame, control) = fixture("quest");
+    let state = vision
+        .farm_state_with_facts(&frame, &control, RequiredFarmFacts::default())
+        .unwrap();
+    assert_eq!(state.scene(), fgo_rs::domain::Scene::QuestList);
+    assert!(state.quest.is_none());
+
+    let (vision, frame, control) = fixture("formation");
+    let state = vision
+        .farm_state_with_facts(&frame, &control, RequiredFarmFacts::default())
+        .unwrap();
+    assert_eq!(state.scene(), fgo_rs::domain::Scene::Formation);
+    assert!(!state.level120);
+
+    let (vision, frame, control) = fixture("apple-count-2");
+    let state = vision
+        .farm_state_with_facts(&frame, &control, RequiredFarmFacts::default())
+        .unwrap();
+    assert_eq!(state.scene(), fgo_rs::domain::Scene::AppleConfirmation);
+    assert_eq!(state.apple_confirm, Some(fgo_rs::farming::Apple::Bronze));
+    assert_eq!(state.apple_count, None);
+}
+
+#[test]
 fn live_refresh_dialog_blocks_background_support_selection() {
     let (v, frame, c) = fixture("refresh");
     let s = v.farm_state(&frame, &c).unwrap();
     assert!(s.refresh_confirm);
     assert!(!s.support && s.friend.is_none() && !s.quest_confirm);
+}
+
+#[test]
+fn scrolled_rider_support_list_keeps_its_scene_without_the_first_row_corner() {
+    let (vision, frame, control) = fixture("support-scrolled");
+    let state = vision.farm_state(&frame, &control).unwrap();
+
+    assert_eq!(state.scene(), fgo_rs::domain::Scene::SupportList);
+    assert!(state.support && state.rider_tab);
 }
 
 #[test]

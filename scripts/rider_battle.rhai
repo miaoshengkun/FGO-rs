@@ -1,5 +1,5 @@
 // One CN Rider Grand battle, from an untouched first turn to the result screen.
-// Select the enemy target in the game before starting. HP-based targeting is pending.
+// Enemy targeting follows the selected Party Profile; rider-v1 uses highest HP.
 // Own team: Iskandar / Taigong / friend support; reserve slot 5: Reines.
 verify_opening();
 cast_skill(1, 1, true);

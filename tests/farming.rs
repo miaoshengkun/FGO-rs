@@ -1,7 +1,8 @@
 use anyhow::Result;
 use fgo_rs::{
-    battle::{BattlePort, BattleState},
-    farming::{Apple, FarmDriver, FarmPort, FarmSession, FarmState},
+    domain::Command,
+    executor::Executor,
+    farming::{Apple, FarmDriver, FarmPort, FarmSession, FarmState, RequiredFarmFacts},
     vision::Point,
 };
 use std::collections::VecDeque;
@@ -13,6 +14,8 @@ struct Port {
     taps: Vec<Point>,
     time: u64,
     swipes: usize,
+    commands: Vec<Command>,
+    requested_facts: Vec<RequiredFarmFacts>,
 }
 impl Port {
     fn new(frames: Vec<FarmState>) -> Self {
@@ -22,10 +25,7 @@ impl Port {
         }
     }
 }
-impl BattlePort for Port {
-    fn observe(&mut self) -> Result<BattleState> {
-        unreachable!()
-    }
+impl Executor for Port {
     fn tap(&mut self, p: Point) -> Result<()> {
         self.taps.push(p);
         Ok(())
@@ -40,6 +40,14 @@ impl BattlePort for Port {
     fn log(&mut self, _: &str) -> Result<()> {
         Ok(())
     }
+    fn swipe(&mut self, _: Point, _: Point, _: u64) -> Result<()> {
+        self.swipes += 1;
+        Ok(())
+    }
+    fn command(&mut self, command: Command) -> Result<()> {
+        self.commands.push(command);
+        Ok(())
+    }
 }
 impl FarmPort for Port {
     fn observe_farm(&mut self) -> Result<FarmState> {
@@ -48,9 +56,9 @@ impl FarmPort for Port {
         }
         Ok(self.last.clone())
     }
-    fn swipe(&mut self, _: Point, _: Point, _: u64) -> Result<()> {
-        self.swipes += 1;
-        Ok(())
+    fn observe_farm_required(&mut self, facts: RequiredFarmFacts) -> Result<FarmState> {
+        self.requested_facts.push(facts);
+        self.observe_farm()
     }
 }
 fn turn() -> FarmState {
@@ -82,6 +90,31 @@ fn list() -> FarmState {
 }
 
 #[test]
+fn enter_requests_only_details_used_by_each_stage() {
+    let mut port = Port::new(vec![formation(), turn()]);
+    let mut session = FarmSession {
+        max_battles: 1,
+        ..Default::default()
+    };
+
+    assert!(
+        FarmDriver {
+            port: &mut port,
+            session: &mut session,
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(
+        port.requested_facts,
+        vec![
+            RequiredFarmFacts::QUEST.union(RequiredFarmFacts::FORMATION),
+            RequiredFarmFacts::default(),
+        ]
+    );
+}
+
+#[test]
 fn exhausted_ap_budget_closes_dialog_without_selecting_a_resource() {
     let mut port = Port::new(vec![
         repeat(),
@@ -102,7 +135,7 @@ fn exhausted_ap_budget_closes_dialog_without_selecting_a_resource() {
     );
     assert_eq!(
         port.taps,
-        vec![Point { x: 801, y: 573 }, Point { x: 640, y: 629 }]
+        vec![Point { x: 840, y: 580 }, Point { x: 640, y: 629 }]
     );
     assert_eq!(session.apples_remaining, 0);
     assert!(!session.active);
@@ -144,6 +177,75 @@ fn apple_is_reserved_once_and_only_after_the_right_confirmation() {
             Point { x: 907, y: 317 },
             Point { x: 891, y: 573 },
             Point { x: 1231, y: 687 }
+        ]
+    );
+    assert_eq!(
+        port.commands,
+        vec![
+            Command::RestoreAp {
+                apple: Apple::Gold,
+                count: 1
+            },
+            Command::StartBattle
+        ]
+    );
+}
+
+#[test]
+fn apple_recovery_reconfirms_quest_before_entering_formation() {
+    let mut port = Port::new(vec![
+        FarmState {
+            ap_empty: true,
+            ..Default::default()
+        },
+        FarmState {
+            apple_confirm: Some(Apple::Gold),
+            apple_count: Some(1),
+            ..Default::default()
+        },
+        FarmState {
+            quest_confirm: true,
+            ..Default::default()
+        },
+        FarmState {
+            quest_confirm: true,
+            ..Default::default()
+        },
+        formation(),
+        turn(),
+    ]);
+    let mut session = FarmSession {
+        apples_remaining: 1,
+        ..Default::default()
+    };
+
+    assert!(
+        FarmDriver {
+            port: &mut port,
+            session: &mut session,
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(session.apples_remaining, 0);
+    assert_eq!(
+        port.taps,
+        vec![
+            Point { x: 907, y: 317 },
+            Point { x: 891, y: 573 },
+            Point { x: 801, y: 573 },
+            Point { x: 1231, y: 687 },
+        ]
+    );
+    assert_eq!(
+        port.commands,
+        vec![
+            Command::RestoreAp {
+                apple: Apple::Gold,
+                count: 1,
+            },
+            Command::ConfirmQuest,
+            Command::StartBattle,
         ]
     );
 }
@@ -222,8 +324,96 @@ fn partial_ap_recovery_uses_at_most_the_remaining_apple_budget() {
 }
 
 #[test]
+fn quest_selection_waits_for_one_stable_position_after_scrolling() {
+    let mut frames: Vec<_> = [562, 510, 375, 375, 375]
+        .into_iter()
+        .map(|y| FarmState {
+            event: true,
+            menu: true,
+            quest: Some(Point { x: 876, y }),
+            ..Default::default()
+        })
+        .collect();
+    frames.push(FarmState {
+        ap_empty: true,
+        ..Default::default()
+    });
+    frames.push(FarmState::default());
+    let mut port = Port::new(frames);
+    let mut session = FarmSession::default();
+    assert!(
+        !FarmDriver {
+            port: &mut port,
+            session: &mut session
+        }
+        .enter()
+        .unwrap()
+    );
+    assert_eq!(port.taps[0], Point { x: 876, y: 375 });
+    assert!(!port.taps.contains(&Point { x: 876, y: 562 }));
+    assert!(port.time >= 1200);
+}
+
+#[test]
+fn moving_quest_and_unexpected_dialog_never_receive_a_selection() {
+    let moving: Vec<_> = (0..22)
+        .map(|index| FarmState {
+            event: true,
+            menu: true,
+            quest: Some(Point {
+                x: 876,
+                y: 300 + index * 3,
+            }),
+            ..Default::default()
+        })
+        .collect();
+    let dialog = vec![
+        moving[0].clone(),
+        FarmState {
+            quest_confirm: true,
+            ..Default::default()
+        },
+    ];
+    let recovery = vec![
+        moving[0].clone(),
+        FarmState {
+            event: true,
+            menu: true,
+            ap_empty: true,
+            ..Default::default()
+        },
+    ];
+    for frames in [moving, dialog, recovery] {
+        let mut port = Port::new(frames);
+        let mut session = FarmSession::default();
+        assert!(
+            FarmDriver {
+                port: &mut port,
+                session: &mut session
+            }
+            .enter()
+            .is_err()
+        );
+        assert!(port.taps.is_empty());
+        assert!(!port.commands.contains(&Command::SelectQuest));
+    }
+}
+
+#[test]
 fn quest_can_open_ap_recovery_without_a_confirmation_screen() {
     let mut port = Port::new(vec![
+        FarmState {
+            event: true,
+            menu: true,
+            quest: Some(Point { x: 800, y: 200 }),
+            ..Default::default()
+        },
+        FarmState {
+            event: true,
+            menu: true,
+            quest: Some(Point { x: 800, y: 200 }),
+            ..Default::default()
+        },
         FarmState {
             event: true,
             menu: true,
@@ -406,6 +596,55 @@ fn refresh_limit_and_spacing_are_enforced_without_picking_random_supports() {
     );
     assert!(port.time >= 10000);
     assert_eq!(port.swipes, 0);
+    assert_eq!(
+        port.commands,
+        vec![
+            Command::RefreshSupport { attempt: 1 },
+            Command::RefreshSupport { attempt: 2 }
+        ]
+    );
+}
+
+#[test]
+fn support_search_refreshes_after_five_scrolls() {
+    let mut frames = vec![
+        list(),
+        FarmState {
+            support: true,
+            rider_tab: true,
+            ..Default::default()
+        },
+    ];
+    frames.extend((0..5).map(|_| FarmState {
+        support: true,
+        rider_tab: true,
+        ..Default::default()
+    }));
+    frames.extend([list(), list(), list()]);
+    frames.push(FarmState {
+        refresh_confirm: true,
+        ..Default::default()
+    });
+    frames.push(list());
+    let mut port = Port::new(frames);
+    let mut session = FarmSession {
+        refresh_limit: 1,
+        ..Default::default()
+    };
+
+    let error = FarmDriver {
+        port: &mut port,
+        session: &mut session,
+    }
+    .select_support()
+    .unwrap_err();
+
+    assert!(
+        error.to_string().contains("after 1 refreshes"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(port.swipes, 5);
+    assert_eq!(port.commands, vec![Command::RefreshSupport { attempt: 1 }]);
 }
 
 #[test]
@@ -426,6 +665,7 @@ fn selecting_support_checks_formation_level_before_start() {
         port.taps,
         vec![Point { x: 363, y: 130 }, Point { x: 800, y: 273 }]
     );
+    assert_eq!(port.commands, vec![Command::SelectSupport { level: 120 }]);
     let mut port = Port::new(vec![FarmState {
         formation: true,
         ..Default::default()
@@ -467,6 +707,10 @@ fn known_result_pages_advance_then_count_one_battle() {
     assert_eq!(session.completed, 1);
     assert!(!session.active);
     assert_eq!(port.taps.len(), 2);
+    assert_eq!(
+        port.commands,
+        vec![Command::AdvanceSettlement, Command::AdvanceSettlement]
+    );
     assert!(
         FarmDriver {
             port: &mut port,
@@ -508,6 +752,18 @@ fn unknown_settlement_screens_timeout_without_random_taps() {
 #[test]
 fn new_quest_requires_event_context_and_confirmation_before_start() {
     let mut port = Port::new(vec![
+        FarmState {
+            event: true,
+            menu: true,
+            quest: Some(Point { x: 876, y: 205 }),
+            ..Default::default()
+        },
+        FarmState {
+            event: true,
+            menu: true,
+            quest: Some(Point { x: 876, y: 205 }),
+            ..Default::default()
+        },
         FarmState {
             event: true,
             menu: true,

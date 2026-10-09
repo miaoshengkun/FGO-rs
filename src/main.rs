@@ -2,9 +2,16 @@ use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use fgo_rs::{
     adb::Adb,
+    battle::Color,
+    catalog::{
+        AtlasClient, CardType, PartyServantData, Region, SupportServantData,
+        load_party_servant_data, load_support_servant_data,
+    },
     control::Control,
-    device::{AdbDevice, Device, ReplayDevice},
+    device::{AdbDevice, Device, FrameSource, ReplayDevice},
     farming::Apple,
+    profile::PartyProfile,
+    replay::{ReplayComparisonMode, ReplayEventSink, ReplayTrace, require_matching_replay},
     runtime::{Host, Runtime},
     vision::{self, Rect, Vision},
 };
@@ -28,6 +35,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Update the local servant catalog from Atlas Academy.
+    SyncData {
+        /// Game data region: JP, NA, CN, KR, or TW.
+        #[arg(long, default_value_t = Region::Cn)]
+        region: Region,
+        /// Root directory for versioned Atlas Academy snapshots.
+        #[arg(long, default_value = "data/atlas")]
+        data_dir: PathBuf,
+        /// Also cache compact details for fixed members and support candidates.
+        #[arg(long)]
+        profile: Option<PathBuf>,
+    },
     /// List connected devices, including offline/unauthorized devices.
     Devices,
     /// Connect to a network Android device. USB devices do not need this command.
@@ -53,10 +72,17 @@ enum Commands {
         battle: bool,
         #[arg(long,conflicts_with_all=["name","battle"])]
         farm: bool,
+        /// Load local Atlas card identities for battle inspection.
+        #[arg(long, requires = "battle")]
+        profile: Option<PathBuf>,
+        #[arg(long, default_value_t = Region::Cn)]
+        region: Region,
+        #[arg(long, default_value = "data/atlas")]
+        data_dir: PathBuf,
         #[arg(long, value_parser = parse_rect)]
         viewport: Option<Rect>,
     },
-    /// Check Rhai syntax only (does not validate host API calls).
+    /// Check Rhai syntax and direct host API calls without a device.
     Check { script: PathBuf },
     /// Execute Rhai. Touches are recorded only unless --execute is supplied.
     Run {
@@ -66,10 +92,28 @@ enum Commands {
         /// A PNG, or directory of PNGs; each capture consumes the next frame.
         #[arg(long, conflicts_with = "execute")]
         replay: Option<PathBuf>,
+        /// Baseline JSONL from the recorded run; supplies capture timing and expected events.
+        #[arg(long, requires = "replay")]
+        replay_trace: Option<PathBuf>,
+        /// Compare only observations or the complete semantic event stream.
+        #[arg(long, requires = "replay_trace")]
+        replay_compare: Option<ReplayComparisonMode>,
+        /// Write the replay comparison report to this JSON file instead of stdout.
+        #[arg(long, requires = "replay_trace")]
+        replay_report: Option<PathBuf>,
         #[arg(long, requires = "serial")]
         execute: bool,
         #[arg(long, default_value = "assets/templates.json")]
         templates: PathBuf,
+        /// Versioned party markers, support slot, and order-change configuration.
+        #[arg(long, default_value = "profiles/rider-v1.json")]
+        profile: PathBuf,
+        /// Region used to load the Profile's local Atlas data.
+        #[arg(long, default_value_t = Region::Cn)]
+        region: Region,
+        /// Root directory containing versioned local Atlas data.
+        #[arg(long, default_value = "data/atlas")]
+        data_dir: PathBuf,
         #[arg(long, value_parser = parse_rect)]
         viewport: Option<Rect>,
         #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u64).range(1..=86400))]
@@ -115,6 +159,30 @@ fn parent_dir(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+fn configure_party_vision(
+    vision: &mut Vision,
+    profile: &PartyProfile,
+    data_dir: &std::path::Path,
+    region: Region,
+) -> Result<(Vec<PartyServantData>, Vec<SupportServantData>)> {
+    let party_data = load_party_servant_data(data_dir, region, profile)?;
+    let support_data = load_support_servant_data(data_dir, region, profile)?;
+    vision.configure_card_identities(
+        party_data
+            .iter()
+            .map(|servant| (servant.slot, servant.command_card_templates.clone()))
+            .collect(),
+        Some(profile.support_party_slot()),
+    )?;
+    vision.configure_support_identities(
+        support_data
+            .iter()
+            .map(|servant| (servant.atlas_id, servant.command_card_templates.clone()))
+            .collect(),
+    )?;
+    Ok((party_data, support_data))
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_seconds = if let Commands::Run { max_seconds, .. } = &cli.command {
@@ -122,7 +190,18 @@ fn main() -> Result<()> {
     } else {
         120
     };
-    let control = Control::new(Duration::from_secs(max_seconds));
+    let replaying = matches!(
+        &cli.command,
+        Commands::Run {
+            replay: Some(_),
+            ..
+        }
+    );
+    let control = if replaying {
+        Control::simulated(Duration::from_secs(max_seconds))
+    } else {
+        Control::new(Duration::from_secs(max_seconds))
+    };
     let stop = control.clone();
     ctrlc::set_handler(move || stop.stop()).context("install Ctrl-C handler")?;
     let adb = Adb {
@@ -130,6 +209,33 @@ fn main() -> Result<()> {
         timeout: Duration::from_secs(cli.adb_timeout),
     };
     match cli.command {
+        Commands::SyncData {
+            region,
+            data_dir,
+            profile,
+        } => {
+            let servant_ids = profile
+                .map(|path| PartyProfile::load(&path))
+                .transpose()?
+                .map(|profile| profile.atlas_servant_ids());
+            if let Some(ids) = &servant_ids {
+                ensure!(!ids.is_empty(), "profile has no Atlas servant IDs");
+            }
+            let client = AtlasClient::default();
+            let catalog = client.sync(&data_dir, region)?;
+            if let Some(ids) = servant_ids {
+                let details = client.sync_servant_details(&data_dir, region, &ids)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "catalog": catalog,
+                        "details": details,
+                    }))?
+                );
+            } else {
+                println!("{}", serde_json::to_string_pretty(&catalog)?);
+            }
+        }
         Commands::Devices => println!("{}", serde_json::to_string_pretty(&adb.devices(&control)?)?),
         Commands::Connect { address } => {
             ensure!(
@@ -164,10 +270,17 @@ fn main() -> Result<()> {
             name,
             battle,
             farm,
+            profile,
+            region,
+            data_dir,
             viewport,
         } => {
             let (frame, _) = vision::normalize(&image::open(&image)?.to_rgba8(), viewport)?;
-            let vision = Vision::load(&templates)?;
+            let mut vision = Vision::load(&templates)?;
+            if let Some(profile_path) = profile {
+                let profile = PartyProfile::load(&profile_path)?;
+                configure_party_vision(&mut vision, &profile, &data_dir, region)?;
+            }
             if farm {
                 println!(
                     "{}",
@@ -202,8 +315,14 @@ fn main() -> Result<()> {
             script,
             serial,
             replay,
+            replay_trace,
+            replay_compare,
+            replay_report,
             execute,
             templates,
+            profile,
+            region,
+            data_dir,
             viewport,
             max_operations,
             trace,
@@ -216,9 +335,29 @@ fn main() -> Result<()> {
             let source = std::fs::read_to_string(&script)
                 .with_context(|| format!("read {}", script.display()))?;
             Runtime::check(&source)?;
-            let vision = Vision::load(&templates)?;
+            let profile = PartyProfile::load(&profile)?;
+            let mut vision = Vision::load(&templates)?;
+            let (party_data, support_data) =
+                configure_party_vision(&mut vision, &profile, &data_dir, region)?;
+            if let Some(baseline) = &replay_trace {
+                ensure!(
+                    baseline != &trace,
+                    "--trace must differ from --replay-trace so the baseline is not modified"
+                );
+            }
+            if let Some(report) = &replay_report {
+                ensure!(
+                    report != &trace && replay_trace.as_ref() != Some(report),
+                    "--replay-report must differ from both trace paths"
+                );
+            }
+            let replay_baseline = replay_trace.as_deref().map(ReplayTrace::load).transpose()?;
             let device: Box<dyn Device> = if let Some(path) = replay {
-                Box::new(ReplayDevice::new(&path)?)
+                Box::new(if let Some(baseline) = &replay_baseline {
+                    ReplayDevice::with_timestamps(&path, baseline.capture_timestamps())?
+                } else {
+                    ReplayDevice::new(&path)?
+                })
             } else {
                 Box::new(AdbDevice {
                     adb,
@@ -230,14 +369,50 @@ fn main() -> Result<()> {
                 .create(true)
                 .append(true)
                 .open(&trace)?;
-            let mut host = Host::new(
-                device,
-                vision,
-                viewport,
-                execute,
-                Some(Box::new(BufWriter::new(output))),
-                control.clone(),
-            );
+            let (mut host, replay_events) = if replay_baseline.is_some() {
+                let (events, captured) =
+                    ReplayEventSink::new(Some(Box::new(BufWriter::new(output))));
+                (
+                    Host::with_event_sink(
+                        device,
+                        vision,
+                        viewport,
+                        execute,
+                        Box::new(events),
+                        control.clone(),
+                    ),
+                    Some(captured),
+                )
+            } else {
+                (
+                    Host::new(
+                        device,
+                        vision,
+                        viewport,
+                        execute,
+                        Some(Box::new(BufWriter::new(output))),
+                        control.clone(),
+                    ),
+                    None,
+                )
+            };
+            host.configure_profile(profile)?;
+            host.configure_noble_phantasm_colors(party_data.iter().map(|servant| {
+                let color = match servant.noble_phantasm_card {
+                    CardType::Arts => Color::Arts,
+                    CardType::Buster => Color::Buster,
+                    CardType::Quick => Color::Quick,
+                };
+                (servant.slot, color)
+            }))?;
+            host.configure_atlas_noble_phantasm_colors(support_data.iter().map(|servant| {
+                let color = match servant.noble_phantasm_card {
+                    CardType::Arts => Color::Arts,
+                    CardType::Buster => Color::Buster,
+                    CardType::Quick => Color::Quick,
+                };
+                (servant.atlas_id, color)
+            }))?;
             if let Some(frames) = frames {
                 host.record_frames(frames)?;
             }
@@ -268,7 +443,23 @@ fn main() -> Result<()> {
                     }
                 }
             });
-            if let Err(error) = runtime.run(&source) {
+            let run_result = runtime.run(&source);
+            if let (Some(baseline), Some(events)) = (&replay_baseline, replay_events) {
+                let report = baseline.compare(
+                    &events.snapshot()?,
+                    replay_compare.unwrap_or(ReplayComparisonMode::Events),
+                );
+                let json = serde_json::to_string_pretty(&report)?;
+                if let Some(path) = replay_report {
+                    parent_dir(&path)?;
+                    std::fs::write(&path, format!("{json}\n"))?;
+                    println!("{}", path.display());
+                } else {
+                    println!("{json}");
+                }
+                require_matching_replay(&report)?;
+            }
+            if let Err(error) = run_result {
                 let stamp = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)?
                     .as_millis();
@@ -281,4 +472,75 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_data_defaults_to_cn() {
+        let cli = Cli::try_parse_from(["fgo-rs", "sync-data"]).unwrap();
+        let Commands::SyncData {
+            region,
+            data_dir,
+            profile,
+        } = cli.command
+        else {
+            panic!("expected sync-data command")
+        };
+        assert_eq!(region, Region::Cn);
+        assert_eq!(data_dir, PathBuf::from("data/atlas"));
+        assert_eq!(profile, None);
+    }
+
+    #[test]
+    fn replay_trace_enables_semantic_comparison_options() {
+        let cli = Cli::try_parse_from([
+            "fgo-rs",
+            "run",
+            "scripts/rider_battle.rhai",
+            "--replay",
+            "frames",
+            "--replay-trace",
+            "baseline.jsonl",
+            "--replay-compare",
+            "observations",
+            "--replay-report",
+            "report.json",
+        ])
+        .unwrap();
+        let Commands::Run {
+            replay_trace,
+            replay_compare,
+            replay_report,
+            ..
+        } = cli.command
+        else {
+            panic!("expected run command")
+        };
+        assert_eq!(replay_trace, Some(PathBuf::from("baseline.jsonl")));
+        assert_eq!(replay_compare, Some(ReplayComparisonMode::Observations));
+        assert_eq!(replay_report, Some(PathBuf::from("report.json")));
+    }
+
+    #[test]
+    fn sync_data_accepts_case_insensitive_region() {
+        let cli = Cli::try_parse_from(["fgo-rs", "sync-data", "--region", "jp"]).unwrap();
+        let Commands::SyncData { region, .. } = cli.command else {
+            panic!("expected sync-data command")
+        };
+        assert_eq!(region, Region::Jp);
+    }
+
+    #[test]
+    fn sync_data_accepts_a_party_profile() {
+        let cli =
+            Cli::try_parse_from(["fgo-rs", "sync-data", "--profile", "profiles/rider-v1.json"])
+                .unwrap();
+        let Commands::SyncData { profile, .. } = cli.command else {
+            panic!("expected sync-data command")
+        };
+        assert_eq!(profile, Some(PathBuf::from("profiles/rider-v1.json")));
+    }
 }

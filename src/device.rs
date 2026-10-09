@@ -6,8 +6,14 @@ use std::{
     time::Duration,
 };
 
-pub trait Device: Send {
+/// Produces screenshots. Kept separate from input so deployments can combine
+/// different capture and control transports.
+pub trait FrameSource: Send {
     fn capture(&mut self, control: &Control) -> Result<RgbaImage>;
+}
+
+/// Sends normalized device input.
+pub trait InputSink: Send {
     fn tap(&mut self, point: Point, control: &Control) -> Result<()>;
     fn swipe(
         &mut self,
@@ -18,12 +24,50 @@ pub trait Device: Send {
     ) -> Result<()>;
 }
 
+/// Combined device contract used by the existing host constructor.
+pub trait Device: FrameSource + InputSink {}
+impl<T: FrameSource + InputSink + ?Sized> Device for T {}
+
+/// Combines independently selected screenshot and input implementations.
+pub struct SplitDevice {
+    frames: Box<dyn FrameSource>,
+    input: Box<dyn InputSink>,
+}
+
+impl SplitDevice {
+    pub fn new(frames: Box<dyn FrameSource>, input: Box<dyn InputSink>) -> Self {
+        Self { frames, input }
+    }
+}
+
+impl FrameSource for SplitDevice {
+    fn capture(&mut self, control: &Control) -> Result<RgbaImage> {
+        self.frames.capture(control)
+    }
+}
+
+impl InputSink for SplitDevice {
+    fn tap(&mut self, point: Point, control: &Control) -> Result<()> {
+        self.input.tap(point, control)
+    }
+
+    fn swipe(
+        &mut self,
+        from: Point,
+        to: Point,
+        duration: Duration,
+        control: &Control,
+    ) -> Result<()> {
+        self.input.swipe(from, to, duration, control)
+    }
+}
+
 pub struct AdbDevice {
     pub adb: Adb,
     pub serial: String,
 }
 
-impl Device for AdbDevice {
+impl FrameSource for AdbDevice {
     fn capture(&mut self, control: &Control) -> Result<RgbaImage> {
         let bytes = self.adb.command(
             Some(&self.serial),
@@ -34,7 +78,9 @@ impl Device for AdbDevice {
             .context("decode ADB PNG screenshot")
             .map(|img| img.to_rgba8())
     }
+}
 
+impl InputSink for AdbDevice {
     fn tap(&mut self, point: Point, control: &Control) -> Result<()> {
         self.adb.command(
             Some(&self.serial),
@@ -77,6 +123,7 @@ impl Device for AdbDevice {
 
 pub struct ReplayDevice {
     paths: Vec<PathBuf>,
+    timestamps: Option<Vec<Duration>>,
     index: usize,
 }
 
@@ -102,13 +149,40 @@ impl ReplayDevice {
             (prefix, number, p.clone())
         });
         ensure!(!paths.is_empty(), "no PNG frames in {}", path.display());
-        Ok(Self { paths, index: 0 })
+        Ok(Self {
+            paths,
+            timestamps: None,
+            index: 0,
+        })
+    }
+
+    pub fn with_timestamps(path: &Path, timestamps: Vec<Duration>) -> Result<Self> {
+        let mut replay = Self::new(path)?;
+        ensure!(
+            replay.paths.len() == timestamps.len(),
+            "replay has {} PNG frame(s), but trace has {} capture event(s)",
+            replay.paths.len(),
+            timestamps.len()
+        );
+        ensure!(
+            timestamps.windows(2).all(|pair| pair[0] <= pair[1]),
+            "replay capture timestamps are not monotonic"
+        );
+        replay.timestamps = Some(timestamps);
+        Ok(replay)
     }
 }
 
-impl Device for ReplayDevice {
+impl FrameSource for ReplayDevice {
     fn capture(&mut self, control: &Control) -> Result<RgbaImage> {
         control.checkpoint()?;
+        if let Some(timestamp) = self
+            .timestamps
+            .as_ref()
+            .and_then(|times| times.get(self.index))
+        {
+            control.advance_to(*timestamp)?;
+        }
         let path = self
             .paths
             .get(self.index)
@@ -119,6 +193,9 @@ impl Device for ReplayDevice {
         self.index += 1;
         Ok(frame)
     }
+}
+
+impl InputSink for ReplayDevice {
     fn tap(&mut self, _: Point, _: &Control) -> Result<()> {
         bail!("replay cannot send device input")
     }
