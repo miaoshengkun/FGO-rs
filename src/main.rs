@@ -29,6 +29,15 @@ struct Cli {
     adb: PathBuf,
     #[arg(long, global = true, default_value_t = 15, value_parser = clap::value_parser!(u64).range(1..=300))]
     adb_timeout: u64,
+    /// Use MaaFramework v5.14.2 for template recognition (build with --features maa).
+    #[arg(long, global = true)]
+    maa_library: Option<PathBuf>,
+    /// Additional MaaFramework resource bundles, layered after assets/maa.
+    #[arg(long, global = true, requires = "maa_library")]
+    maa_resource: Vec<PathBuf>,
+    /// Directory containing det.onnx, rec.onnx and keys.txt for native OCR.
+    #[arg(long, global = true, requires = "maa_library")]
+    maa_ocr_model: Option<PathBuf>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -67,6 +76,9 @@ enum Commands {
         templates: PathBuf,
         #[arg(long)]
         name: Option<String>,
+        /// Evaluate a MaaFramework resource recognition node without running its actions.
+        #[arg(long, conflicts_with_all = ["name", "battle", "farm", "profile"])]
+        maa_node: Option<String>,
         /// Print the complete CN battle state instead of template matches.
         #[arg(long, conflicts_with = "name")]
         battle: bool,
@@ -157,6 +169,37 @@ fn parent_dir(path: &std::path::Path) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
+}
+
+fn load_vision(
+    manifest: &std::path::Path,
+    library: Option<&std::path::Path>,
+    resources: &[PathBuf],
+    ocr_model: Option<&std::path::Path>,
+) -> Result<Vision> {
+    let vision = Vision::load(manifest)?;
+    let Some(library) = library else {
+        return Ok(vision);
+    };
+    #[cfg(feature = "maa")]
+    {
+        let mut bundles = vec![
+            manifest
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .join("maa"),
+        ];
+        bundles.extend_from_slice(resources);
+        let backend = fgo_rs::maa::MaaRecognizer::new(library, &bundles, ocr_model)?;
+        let mut vision = vision;
+        vision.set_maa_backend(backend)?;
+        Ok(vision)
+    }
+    #[cfg(not(feature = "maa"))]
+    {
+        let _ = (library, resources, ocr_model);
+        anyhow::bail!("MaaFramework support is disabled; build with cargo build --features maa");
+    }
 }
 
 fn configure_party_vision(
@@ -268,6 +311,7 @@ fn main() -> Result<()> {
             image,
             templates,
             name,
+            maa_node,
             battle,
             farm,
             profile,
@@ -276,7 +320,30 @@ fn main() -> Result<()> {
             viewport,
         } => {
             let (frame, _) = vision::normalize(&image::open(&image)?.to_rgba8(), viewport)?;
-            let mut vision = Vision::load(&templates)?;
+            let mut vision = load_vision(
+                &templates,
+                cli.maa_library.as_deref(),
+                &cli.maa_resource,
+                cli.maa_ocr_model.as_deref(),
+            )?;
+            if let Some(node) = maa_node {
+                ensure!(
+                    cli.maa_library.is_some(),
+                    "--maa-node requires --maa-library"
+                );
+                #[cfg(feature = "maa")]
+                {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &vision.recognize_maa_node(&frame, &node, &control)?
+                        )?
+                    );
+                    return Ok(());
+                }
+                #[cfg(not(feature = "maa"))]
+                anyhow::bail!("MaaFramework support is disabled; cannot inspect {node}");
+            }
             if let Some(profile_path) = profile {
                 let profile = PartyProfile::load(&profile_path)?;
                 configure_party_vision(&mut vision, &profile, &data_dir, region)?;
@@ -336,7 +403,12 @@ fn main() -> Result<()> {
                 .with_context(|| format!("read {}", script.display()))?;
             Runtime::check(&source)?;
             let profile = PartyProfile::load(&profile)?;
-            let mut vision = Vision::load(&templates)?;
+            let mut vision = load_vision(
+                &templates,
+                cli.maa_library.as_deref(),
+                &cli.maa_resource,
+                cli.maa_ocr_model.as_deref(),
+            )?;
             let (party_data, support_data) =
                 configure_party_vision(&mut vision, &profile, &data_dir, region)?;
             if let Some(baseline) = &replay_trace {

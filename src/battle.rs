@@ -381,6 +381,8 @@ pub struct BattleState {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub skill_confirmation: bool,
     pub colors: [Option<Color>; 5],
+    #[serde(skip_serializing_if = "card_color_readings_not_requested")]
+    pub card_color_recognition: [Recognition<Color>; 5],
     pub card_groups: [Option<CardGroup>; 5],
     pub card_owners: [Option<PartySlot>; 5],
     /// Atlas identity of the dynamic support, confirmed from one or more
@@ -494,6 +496,12 @@ impl BattleState {
     }
 }
 
+fn card_color_readings_not_requested(readings: &[Recognition<Color>; 5]) -> bool {
+    readings
+        .iter()
+        .all(|reading| matches!(reading, Recognition::NotRequested))
+}
+
 impl SceneFacts for BattleState {
     fn scene_candidates(&self) -> Vec<Scene> {
         BattleState::scene_candidates(self)
@@ -526,6 +534,9 @@ impl SceneFacts for BattleState {
             }
         }
         for card in 0..5 {
+            if self.card_color_recognition[card].is_unknown() {
+                fields.push(format!("colors.{}", card + 1));
+            }
             if self.critical[card].is_unknown() {
                 fields.push(format!("critical.{}", card + 1));
             }
@@ -587,6 +598,15 @@ impl SceneFacts for BattleState {
                 evidence.push(FieldEvidence {
                     field: format!("critical.{}", card + 1),
                     value: self.critical[card].value().map(|value| value.to_string()),
+                    evidence: value,
+                });
+            }
+            if let Some(value) = self.card_color_recognition[card].evidence() {
+                evidence.push(FieldEvidence {
+                    field: format!("colors.{}", card + 1),
+                    value: self.card_color_recognition[card]
+                        .value()
+                        .map(|color| format!("{color:?}")),
                     evidence: value,
                 });
             }

@@ -288,6 +288,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "image",
+ "maa-framework",
  "rhai",
  "serde",
  "serde_json",
@@ -424,6 +425,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -434,6 +445,29 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "maa-framework"
+version = "1.25.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b66fa73bc6364e819e025ca0ec6e524e3dc8d001ce906a817d5c4967e9180c"
+dependencies = [
+ "bitflags",
+ "maa-framework-sys",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "maa-framework-sys"
+version = "5.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2753b4d972da246236760c81243868ad4deafc4644e3e77f169181b49521c740"
+dependencies = [
+ "libloading",
+ "once_cell",
+]
 
 [[package]]
 name = "memchr"
@@ -831,6 +865,26 @@ name = "thin-vec"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79def32ffcd477db1ff26f76dab9e3a91f0bd42a85ca96577089b24623056f9d"
+
+[[package]]
+name = "thiserror"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+]
 
 [[package]]
 name = "tiny-keccak"

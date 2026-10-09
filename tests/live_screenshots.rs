@@ -1,6 +1,25 @@
 use fgo_rs::{control::Control, farming::RequiredFarmFacts, vision::Vision};
 use std::{path::PathBuf, time::Duration};
 
+#[path = "support/saber_frames.rs"]
+mod saber_frames;
+
+#[test]
+fn saber_retest_entry_settlement_and_numbers_reject_incomplete_evidence() {
+    let vision =
+        Vision::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/templates.json"))
+            .unwrap();
+    saber_frames::verify_retest_facts(&vision);
+}
+
+#[test]
+fn saber_card_badges_survive_buff_occlusion_without_guessing_hidden_badges() {
+    let mut vision =
+        Vision::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/templates.json"))
+            .unwrap();
+    saber_frames::verify_card_facts(&mut vision);
+}
+
 fn fixture(name: &str) -> (Vision, image::RgbaImage, Control) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     (
@@ -10,6 +29,42 @@ fn fixture(name: &str) -> (Vision, image::RgbaImage, Control) {
             .to_rgba8(),
         Control::new(Duration::from_secs(30)),
     )
+}
+
+#[test]
+fn saber_quest_vii_rejects_v_and_vi_titles_on_real_frames() {
+    let (vision, without_vii, control) = fixture("saber-quests-v");
+    assert!(
+        vision
+            .find(&without_vii, "saber_quest_vii", &control)
+            .unwrap()
+            .is_none()
+    );
+    let (_, with_vii, _) = fixture("saber-quests-vi-vii");
+    let found = vision
+        .find(&with_vii, "saber_quest_vii", &control)
+        .unwrap()
+        .unwrap();
+    assert!(
+        (376..431).contains(&found.y),
+        "must select VII, not the VI row: {found:?}"
+    );
+    assert!(
+        vision
+            .find_in(
+                &with_vii,
+                "saber_quest_vii",
+                Some(fgo_rs::vision::Rect {
+                    x: 760,
+                    y: 190,
+                    width: 260,
+                    height: 55,
+                }),
+                &control
+            )
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]

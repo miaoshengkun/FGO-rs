@@ -88,13 +88,16 @@ pub fn normalize(raw: &RgbaImage, viewport: Option<Rect>) -> Result<(RgbaImage, 
 #[serde(deny_unknown_fields)]
 pub struct TemplateSpec {
     pub file: PathBuf,
+    /// Same-size rendering variants, sharing the ROI and acceptance threshold.
+    #[serde(default)]
+    pub alternatives: Vec<PathBuf>,
     pub region: Rect,
     pub threshold: f64,
 }
 
 struct Template {
     spec: TemplateSpec,
-    pixels: Arc<TemplatePixels>,
+    pixels: Vec<Arc<TemplatePixels>>,
 }
 
 struct TemplatePixels {
@@ -123,6 +126,19 @@ fn template_pixels(image: &RgbaImage) -> TemplatePixels {
         samples,
         energy,
     }
+}
+
+fn identity_render_variants(
+    image: &RgbaImage,
+    original: TemplatePixels,
+) -> [Arc<TemplatePixels>; 2] {
+    // MuMu's normalized command artwork is slightly smaller than the Atlas
+    // raster. Keep the original and one bounded 96x46 rendering, on the same
+    // 98x47 transparent canvas; do not weaken identity scores or runner-up gaps.
+    let resized = imageops::resize(image, 96, 46, imageops::FilterType::CatmullRom);
+    let mut canvas = RgbaImage::new(98, 47);
+    imageops::replace(&mut canvas, &resized, 1, 0);
+    [Arc::new(original), Arc::new(template_pixels(&canvas))]
 }
 
 fn best_template_score(
@@ -307,6 +323,8 @@ pub struct Vision {
     card_identities: Vec<CardIdentityTemplates>,
     support_identities: Vec<SupportIdentityTemplates>,
     support_party_slot: Option<PartySlot>,
+    #[cfg(feature = "maa")]
+    maa: Option<crate::maa::MaaRecognizer>,
 }
 
 impl Vision {
@@ -342,27 +360,43 @@ impl Vision {
                 spec.threshold.is_finite() && spec.threshold > 0.0 && spec.threshold <= 1.0,
                 "invalid threshold for {name}"
             );
-            let path = base.join(&spec.file);
-            let pixels = if let Some(pixels) = assets.get(&path) {
-                pixels.clone()
-            } else {
-                let img = image::open(&path)
-                    .with_context(|| format!("load {}", path.display()))?
-                    .to_rgba8();
-                let pixels = template_pixels(&img);
+            let mut variants = Vec::with_capacity(1 + spec.alternatives.len());
+            for file in std::iter::once(&spec.file).chain(&spec.alternatives) {
+                let path = base.join(file);
+                let pixels = if let Some(pixels) = assets.get(&path) {
+                    pixels.clone()
+                } else {
+                    let img = image::open(&path)
+                        .with_context(|| format!("load {}", path.display()))?
+                        .to_rgba8();
+                    let pixels = Arc::new(template_pixels(&img));
+                    assets.insert(path, pixels.clone());
+                    pixels
+                };
                 ensure!(
                     pixels.energy > 0.0,
                     "template {name} has zero energy or empty mask"
                 );
-                let pixels = Arc::new(pixels);
-                assets.insert(path.clone(), pixels.clone());
-                pixels
-            };
-            ensure!(
-                pixels.width <= spec.region.width && pixels.height <= spec.region.height,
-                "template {name} exceeds region"
+                ensure!(
+                    pixels.width <= spec.region.width && pixels.height <= spec.region.height,
+                    "template {name} exceeds region"
+                );
+                if let Some(first) = variants.first() {
+                    let first: &Arc<TemplatePixels> = first;
+                    ensure!(
+                        (pixels.width, pixels.height) == (first.width, first.height),
+                        "template {name} alternatives must have the same dimensions"
+                    );
+                }
+                variants.push(pixels);
+            }
+            templates.insert(
+                name,
+                Template {
+                    spec,
+                    pixels: variants,
+                },
             );
-            templates.insert(name, Template { spec, pixels });
         }
         Ok(Self {
             farm_templates: None,
@@ -370,7 +404,101 @@ impl Vision {
             card_identities: Vec::new(),
             support_identities: Vec::new(),
             support_party_slot: None,
+            #[cfg(feature = "maa")]
+            maa: None,
         })
+    }
+
+    /// Use native MaaFramework for manifest template matches. Identity ranking
+    /// and charge-component counting retain their separately validated paths.
+    #[cfg(feature = "maa")]
+    pub fn set_maa_backend(&mut self, recognizer: crate::maa::MaaRecognizer) -> Result<()> {
+        recognizer.install_templates(self.templates.iter().map(|(name, template)| {
+            let images = template
+                .pixels
+                .iter()
+                .map(|pixels| {
+                    let mut image = RgbaImage::new(pixels.width, pixels.height);
+                    for &(x, y, values) in &pixels.samples {
+                        image.put_pixel(
+                            x,
+                            y,
+                            image::Rgba([values[0] as u8, values[1] as u8, values[2] as u8, 255]),
+                        );
+                    }
+                    image
+                })
+                .collect();
+            (name.as_str(), images)
+        }))?;
+        self.maa = Some(recognizer);
+        Ok(())
+    }
+
+    #[cfg(feature = "maa")]
+    pub fn recognize_maa_node(
+        &self,
+        frame: &RgbaImage,
+        node: &str,
+        control: &Control,
+    ) -> Result<crate::maa::NativeRecognition> {
+        Self::require_canvas(frame)?;
+        self.maa
+            .as_ref()
+            .context("MaaFramework backend is not configured")?
+            .recognize_node(frame, node, control)
+    }
+
+    #[cfg(feature = "maa")]
+    pub(crate) fn maa_card_color(
+        &self,
+        frame: &RgbaImage,
+        index: usize,
+        control: &Control,
+    ) -> Result<Option<Recognition<crate::battle::Color>>> {
+        use crate::observation::{
+            DetectorKind, RecognitionEvidence, RecognitionMethod, ScoreDirection,
+        };
+        let Some(maa) = self.maa.as_ref().filter(|maa| maa.has_ocr()) else {
+            return Ok(None);
+        };
+        let result = maa.recognize_node(frame, &format!("战斗_卡{}", index + 1), control)?;
+        let best = &result.detail["best"];
+        let score = best["score"]
+            .as_f64()
+            .filter(|score| score.is_finite() && (0.0..=1.0).contains(score))
+            .unwrap_or(0.0);
+        let evidence = RecognitionEvidence {
+            detector: DetectorKind::CommandCardColor,
+            roi: result
+                .roi
+                .context("Maa card OCR node requires a fixed ROI")?,
+            method: RecognitionMethod::MaaOcr,
+            score,
+            threshold: 0.90,
+            direction: ScoreDirection::HigherIsBetter,
+            feature_floor: None,
+        };
+        let color = match best["text"].as_str().map(str::trim) {
+            Some("力击" | "Buster") => Some(crate::battle::Color::Buster),
+            Some("技击" | "Arts") => Some(crate::battle::Color::Arts),
+            Some("迅击" | "Quick") => Some(crate::battle::Color::Quick),
+            _ => None,
+        };
+        let reading = match color {
+            Some(color) if result.hit && score >= evidence.threshold => {
+                if result.detail["filtered"]
+                    .as_array()
+                    .is_none_or(|results| results.len() != 1)
+                {
+                    Recognition::unknown(UnknownReason::Ambiguous, Some(evidence))
+                } else {
+                    Recognition::known(color, evidence)
+                }
+            }
+            _ => Recognition::unknown(UnknownReason::NoCandidate, Some(evidence)),
+        };
+        Ok(Some(reading))
     }
 
     pub fn configure_card_identities(
@@ -395,7 +523,7 @@ impl Vision {
                     pixels.width == 98 && pixels.height == 47 && pixels.energy > 0.0,
                     "invalid card identity template"
                 );
-                templates.push(Arc::new(pixels));
+                templates.extend(identity_render_variants(&image, pixels));
             }
             configured.push(CardIdentityTemplates { slot, templates });
         }
@@ -424,7 +552,7 @@ impl Vision {
                     pixels.width == 98 && pixels.height == 47 && pixels.energy > 0.0,
                     "invalid support identity template"
                 );
-                templates.push(Arc::new(pixels));
+                templates.extend(identity_render_variants(&image, pixels));
             }
             configured.push(SupportIdentityTemplates {
                 atlas_id,
@@ -507,7 +635,7 @@ impl Vision {
             .get(name)
             .with_context(|| format!("unknown template: {name}"))?;
         let region = region.unwrap_or(template.spec.region);
-        let pixels = &template.pixels;
+        let pixels = &template.pixels[0];
         region.validate(frame.width(), frame.height())?;
         ensure!(
             pixels.width <= region.width && pixels.height <= region.height,
@@ -515,38 +643,57 @@ impl Vision {
         );
         let mut best = template.spec.threshold;
         let mut result = None;
-        let max_denominator =
-            (pixels.energy * pixels.samples.len() as f64 * 3.0 * 255.0 * 255.0).sqrt();
-        for y in region.y..=region.y + region.height - pixels.height {
-            control.checkpoint()?;
-            for x in region.x..=region.x + region.width - pixels.width {
-                let mut difference = 0.0;
-                let mut energy = 0.0;
-                let cutoff = best * max_denominator;
-                for &(tx, ty, values) in &pixels.samples {
-                    let p = frame.get_pixel(x + tx, y + ty);
-                    for c in 0..3 {
-                        let value = p[c] as f64;
-                        difference += (value - values[c]).powi(2);
-                        energy += value * value;
-                    }
-                    if difference > cutoff {
-                        break;
-                    }
+        for (variant, pixels) in template.pixels.iter().enumerate() {
+            #[cfg(not(feature = "maa"))]
+            let _ = variant;
+            #[cfg(feature = "maa")]
+            if let Some(maa) = &self.maa {
+                if let Some(found) = maa.find(
+                    frame,
+                    region,
+                    (name, variant),
+                    template.spec.threshold,
+                    control,
+                )? && found.score < best
+                {
+                    best = found.score;
+                    result = Some(found);
                 }
-                if difference > cutoff || energy == 0.0 {
-                    continue;
-                }
-                let score = (difference / (pixels.energy * energy).sqrt()).min(1.0);
-                if score < best {
-                    best = score;
-                    result = Some(Match {
-                        x: x + pixels.width / 2,
-                        y: y + pixels.height / 2,
-                        score,
-                        threshold: template.spec.threshold,
-                        region,
-                    });
+                continue;
+            }
+            let max_denominator =
+                (pixels.energy * pixels.samples.len() as f64 * 3.0 * 255.0 * 255.0).sqrt();
+            for y in region.y..=region.y + region.height - pixels.height {
+                control.checkpoint()?;
+                for x in region.x..=region.x + region.width - pixels.width {
+                    let mut difference = 0.0;
+                    let mut energy = 0.0;
+                    let cutoff = best * max_denominator;
+                    for &(tx, ty, values) in &pixels.samples {
+                        let p = frame.get_pixel(x + tx, y + ty);
+                        for c in 0..3 {
+                            let value = p[c] as f64;
+                            difference += (value - values[c]).powi(2);
+                            energy += value * value;
+                        }
+                        if difference > cutoff {
+                            break;
+                        }
+                    }
+                    if difference > cutoff || energy == 0.0 {
+                        continue;
+                    }
+                    let score = (difference / (pixels.energy * energy).sqrt()).min(1.0);
+                    if score < best {
+                        best = score;
+                        result = Some(Match {
+                            x: x + pixels.width / 2,
+                            y: y + pixels.height / 2,
+                            score,
+                            threshold: template.spec.threshold,
+                            region,
+                        });
+                    }
                 }
             }
         }
@@ -567,7 +714,7 @@ impl Vision {
             .templates
             .get(name)
             .with_context(|| format!("unknown template: {name}"))?;
-        let pixels = &template.pixels;
+        let pixels = &template.pixels[0];
         region.validate(frame.width(), frame.height())?;
         ensure!(
             pixels.width <= region.width && pixels.height <= region.height,
@@ -576,35 +723,36 @@ impl Vision {
         let columns = (region.width - pixels.width + 1) as usize;
         let rows = (region.height - pixels.height + 1) as usize;
         let mut matches = vec![false; columns * rows];
-        let max_denominator =
-            (pixels.energy * pixels.samples.len() as f64 * 3.0 * 255.0 * 255.0).sqrt();
-        let cutoff = template.spec.threshold * max_denominator;
-        for row in 0..rows {
-            control.checkpoint()?;
-            for column in 0..columns {
-                let mut difference = 0.0;
-                let mut energy = 0.0;
-                for &(tx, ty, values) in &pixels.samples {
-                    let pixel =
-                        frame.get_pixel(region.x + column as u32 + tx, region.y + row as u32 + ty);
-                    for channel in 0..3 {
-                        let value = pixel[channel] as f64;
-                        difference += (value - values[channel]).powi(2);
-                        energy += value * value;
+        for pixels in &template.pixels {
+            let max_denominator =
+                (pixels.energy * pixels.samples.len() as f64 * 3.0 * 255.0 * 255.0).sqrt();
+            let cutoff = template.spec.threshold * max_denominator;
+            for row in 0..rows {
+                control.checkpoint()?;
+                for column in 0..columns {
+                    let mut difference = 0.0;
+                    let mut energy = 0.0;
+                    for &(tx, ty, values) in &pixels.samples {
+                        let pixel = frame
+                            .get_pixel(region.x + column as u32 + tx, region.y + row as u32 + ty);
+                        for channel in 0..3 {
+                            let value = pixel[channel] as f64;
+                            difference += (value - values[channel]).powi(2);
+                            energy += value * value;
+                        }
+                        if difference > cutoff {
+                            break;
+                        }
                     }
-                    if difference > cutoff {
-                        break;
+                    if difference <= cutoff
+                        && energy > 0.0
+                        && difference / (pixels.energy * energy).sqrt() < template.spec.threshold
+                    {
+                        matches[row * columns + column] = true;
                     }
-                }
-                if difference <= cutoff
-                    && energy > 0.0
-                    && difference / (pixels.energy * energy).sqrt() < template.spec.threshold
-                {
-                    matches[row * columns + column] = true;
                 }
             }
         }
-
         let mut count = 0;
         for start in 0..matches.len() {
             if !matches[start] {
@@ -652,7 +800,7 @@ impl Vision {
             .templates
             .get(level_template)
             .context("missing level120 template")?
-            .pixels
+            .pixels[0]
             .height;
         let mut ranges = vec![(175, 690)];
         let mut candidates = Vec::new();
@@ -746,7 +894,7 @@ mod tests {
             crate::profile::PartyProfile::load(&root.join("profiles/saber-v1.json"))
                 .unwrap()
                 .farm_templates;
-        let frame = image::open(root.join("logs/saber-live/test-vii-20260918c/frames/000007.png"))
+        let frame = image::open(root.join("tests/fixtures/live-saber-support-iori120.png"))
             .unwrap()
             .to_rgba8();
         let control = Control::new(Duration::from_secs(30));
@@ -777,6 +925,7 @@ mod tests {
             Template {
                 spec: TemplateSpec {
                     file: PathBuf::new(),
+                    alternatives: Vec::new(),
                     region: Rect {
                         x: 0,
                         y: 0,
@@ -785,7 +934,7 @@ mod tests {
                     },
                     threshold: 0.001,
                 },
-                pixels: Arc::new(template_pixels(&name)),
+                pixels: vec![Arc::new(template_pixels(&name))],
             },
         );
         vision.farm_templates = Some(crate::profile::FarmTemplateProfile {
@@ -812,12 +961,15 @@ mod tests {
     fn fixture(samples: Vec<(u32, u32, [f64; 3])>) -> Vision {
         let energy = samples.iter().flat_map(|s| s.2).map(|v| v * v).sum();
         Vision {
+            #[cfg(feature = "maa")]
+            maa: None,
             farm_templates: None,
             templates: HashMap::from([(
                 "test".into(),
                 Template {
                     spec: TemplateSpec {
                         file: PathBuf::new(),
+                        alternatives: Vec::new(),
                         region: Rect {
                             x: 0,
                             y: 0,
@@ -826,12 +978,12 @@ mod tests {
                         },
                         threshold: 0.02,
                     },
-                    pixels: Arc::new(TemplatePixels {
+                    pixels: vec![Arc::new(TemplatePixels {
                         width: 2,
                         height: 1,
                         samples,
                         energy,
-                    }),
+                    })],
                 },
             )]),
             card_identities: Vec::new(),
@@ -889,12 +1041,12 @@ mod tests {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/templates.json");
         let vision = Vision::load(&manifest).unwrap();
         assert!(Arc::ptr_eq(
-            &vision.templates["arts_1"].pixels,
-            &vision.templates["arts_5"].pixels
+            &vision.templates["arts_1"].pixels[0],
+            &vision.templates["arts_5"].pixels[0]
         ));
         assert!(Arc::ptr_eq(
-            &vision.templates["critical_1_1"].pixels,
-            &vision.templates["critical_1_5"].pixels
+            &vision.templates["critical_1_1"].pixels[0],
+            &vision.templates["critical_1_5"].pixels[0]
         ));
     }
 
@@ -987,6 +1139,143 @@ mod tests {
         assert_eq!(
             vision.support_card_identity(&frame, 0, &control).unwrap(),
             Some(704000)
+        );
+    }
+
+    #[test]
+    fn scaled_real_support_cards_still_require_the_declared_candidate_and_margin() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let image = |name: &str| image::open(root.join(name)).unwrap().to_rgba8();
+        let mut vision =
+            Vision::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/templates.json"))
+                .unwrap();
+        let frame = image("live-saber-cards2.png");
+        let iori = image("saber-iori-card.png");
+        let control = Control::new(Duration::from_secs(30));
+        vision
+            .configure_support_identities(vec![
+                (106000, vec![iori.clone()]),
+                (103700, vec![image("saber-benienma-card.png")]),
+                (100600, vec![image("saber-nero-bride-card.png")]),
+            ])
+            .unwrap();
+        for (index, expected) in [103700, 100600, 106000, 106000, 100600]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(
+                vision
+                    .support_card_identity(&frame, index, &control)
+                    .unwrap(),
+                Some(expected)
+            );
+        }
+        // Check every card separately: an accepted card in a group must not
+        // hide another card's miss when the battle state resolves one ID.
+        vision
+            .configure_support_identities(vec![(106000, vec![iori.clone()])])
+            .unwrap();
+        for (name, support) in [
+            ("live-saber-cards1.png", [false; 5]),
+            ("live-saber-cards2.png", [false, false, true, true, false]),
+            ("live-saber-cards3.png", [true, false, false, true, true]),
+            (
+                "live-saber-retest-cards1.png",
+                [false, true, false, false, false],
+            ),
+            (
+                "live-saber-retest-cards2.png",
+                [true, false, true, false, false],
+            ),
+            (
+                "live-saber-retest-cards3.png",
+                [true, true, false, false, false],
+            ),
+        ] {
+            let frame = image(name);
+            for (index, is_support) in support.into_iter().enumerate() {
+                assert_eq!(
+                    vision
+                        .support_card_identity(&frame, index, &control)
+                        .unwrap(),
+                    is_support.then_some(106000),
+                    "{name}: card {}",
+                    index + 1
+                );
+            }
+        }
+        vision
+            .configure_support_identities(vec![(103700, vec![image("saber-benienma-card.png")])])
+            .unwrap();
+        assert_eq!(
+            vision.support_card_identity(&frame, 2, &control).unwrap(),
+            None
+        );
+        vision
+            .configure_support_identities(vec![(106000, vec![iori.clone()]), (106001, vec![iori])])
+            .unwrap();
+        assert!(matches!(
+            vision
+                .support_card_recognition(&frame, 2, &control)
+                .unwrap(),
+            Recognition::Unknown {
+                reason: UnknownReason::Ambiguous,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn template_variants_rank_matches_and_do_not_duplicate_components() {
+        let mut vision = fixture(vec![(0, 0, [100.0; 3]), (1, 0, [50.0; 3])]);
+        let alternative =
+            RgbaImage::from_fn(2, 1, |x, _| image::Rgba([if x == 0 { 150 } else { 20 }; 4]));
+        let pixels = Arc::new(template_pixels(&alternative));
+        vision
+            .templates
+            .get_mut("test")
+            .unwrap()
+            .pixels
+            .extend([pixels.clone(), pixels]);
+        let mut frame = RgbaImage::new(8, 1);
+        frame.put_pixel(0, 0, image::Rgba([98, 98, 98, 255]));
+        frame.put_pixel(1, 0, image::Rgba([48, 48, 48, 255]));
+        imageops::replace(&mut frame, &alternative, 4, 0);
+        let region = Rect {
+            x: 0,
+            y: 0,
+            width: 8,
+            height: 1,
+        };
+        let control = Control::new(Duration::from_secs(1));
+        let found = vision
+            .find_in(&frame, "test", Some(region), &control)
+            .unwrap()
+            .unwrap();
+        assert_eq!((found.x, found.y), (5, 0));
+        assert_eq!(
+            vision.count_in(&frame, "test", region, &control).unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn manifest_rejects_alternative_with_incompatible_size() {
+        let directory = tempfile::tempdir().unwrap();
+        RgbaImage::from_pixel(2, 1, image::Rgba([100; 4]))
+            .save(directory.path().join("base.png"))
+            .unwrap();
+        RgbaImage::from_pixel(3, 1, image::Rgba([100; 4]))
+            .save(directory.path().join("alternative.png"))
+            .unwrap();
+        let manifest = directory.path().join("templates.json");
+        std::fs::write(&manifest, r#"{"test":{"file":"base.png","alternatives":["alternative.png"],"region":{"x":0,"y":0,"width":10,"height":10},"threshold":0.1}}"#).unwrap();
+        assert!(
+            Vision::load(&manifest)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("same dimensions")
         );
     }
 }

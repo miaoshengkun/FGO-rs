@@ -15,6 +15,11 @@ rhai = { version = "1", features = ["internals", "sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 ureq = { version = "3", default-features = false, features = ["gzip", "rustls"] }
+maa-framework = { version = "=1.25.2", optional = true, default-features = false, features = ["dynamic"] }
+tempfile = { version = "3", optional = true }
+
+[features]
+maa = ["dep:maa-framework", "dep:tempfile"]
 
 [dev-dependencies]
 tempfile = "3"

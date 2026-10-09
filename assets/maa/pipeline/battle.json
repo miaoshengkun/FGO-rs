@@ -1,0 +1,298 @@
+{
+  "战斗_主界面": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "roi": [
+          1058,
+          508,
+          152,
+          54
+        ],
+        "template": "battle/scene_main_battle.png",
+        "green_mask": true
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_选卡场景": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "roi": [
+          1135,
+          656,
+          128,
+          51
+        ],
+        "template": [
+          "battle/scene_command_selection.png",
+          "battle/scene_command_selection_cn.png"
+        ],
+        "green_mask": true,
+        "threshold": [
+          0.7,
+          0.95
+        ]
+      }
+    },
+    "doc": "MaaFgo JP template plus a CN variant cropped from step12.png; recognition only."
+  },
+  "战斗_胜利": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "template": "battle/下一步.png",
+        "threshold": 0.8
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_失败": {
+    "recognition": {
+      "type": "TemplateMatch",
+      "param": {
+        "roi": [
+          507,
+          361,
+          269,
+          74
+        ],
+        "template": "battle/scene_defeat.png",
+        "green_mask": true
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_换人界面": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          101,
+          119,
+          1070,
+          79
+        ],
+        "expected": [
+          "请从首发成员和候补成员中",
+          "スターティングメンバー、サブメンバーから、入れ替えたいサーヴァントをそれぞれ1騎ずつ選んでください",
+          "入れ替えたいサーヴァント",
+          "入れ替えたい",
+          "スターティングメンバー、サブメンバーから",
+          "1騎ずつ選んでください"
+        ]
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_卡1": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          36,
+          520,
+          204,
+          100
+        ],
+        "expected": [
+          "力击",
+          "迅击",
+          "技击",
+          "Buster",
+          "Arts",
+          "Quick"
+        ]
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_卡2": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          277,
+          520,
+          228,
+          99
+        ],
+        "expected": [
+          "力击",
+          "迅击",
+          "技击",
+          "Buster",
+          "Arts",
+          "Quick"
+        ]
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_卡3": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          525,
+          515,
+          226,
+          104
+        ],
+        "expected": [
+          "力击",
+          "迅击",
+          "技击",
+          "Buster",
+          "Arts",
+          "Quick"
+        ]
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_卡4": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          796,
+          520,
+          208,
+          99
+        ],
+        "expected": [
+          "力击",
+          "迅击",
+          "技击",
+          "Buster",
+          "Arts",
+          "Quick"
+        ]
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_卡5": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          1062,
+          517,
+          196,
+          108
+        ],
+        "expected": [
+          "力击",
+          "迅击",
+          "技击",
+          "Buster",
+          "Arts",
+          "Quick"
+        ]
+      }
+    },
+    "doc": "Recognition-only import from MaaFgo cbf7eaac; validate thresholds against the local screenshot corpus."
+  },
+  "战斗_NP卡1": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          220,
+          655,
+          76,
+          17
+        ],
+        "only_rec": true,
+        "expected": "^(0|[1-9][0-9]?|[12][0-9]{2}|300)%$",
+        "threshold": 0.98
+      }
+    },
+    "doc": "Diagnostic-only adaptation of MaaFgo NP OCR. Expanded glyph ROI excludes the gauge; high confidence cannot detect a fully missing digit. Not used for runtime numeric facts."
+  },
+  "战斗_HP1": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          200,
+          620,
+          98,
+          24
+        ],
+        "expected": "^(0|[1-9][0-9]{0,2}(,[0-9]{3})?)$",
+        "threshold": 0.98
+      }
+    },
+    "doc": "Diagnostic-only CN HP OCR using the FGO-py text ROI. Runtime retains its whole-glyph checks; malformed grouping or trailing punctuation is rejected."
+  },
+  "战斗_NP卡2": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          538,
+          655,
+          76,
+          17
+        ],
+        "only_rec": true,
+        "expected": "^(0|[1-9][0-9]?|[12][0-9]{2}|300)%$",
+        "threshold": 0.98
+      }
+    },
+    "doc": "Diagnostic-only adaptation of MaaFgo NP OCR. Expanded glyph ROI excludes the gauge; high confidence cannot detect a fully missing digit. Not used for runtime numeric facts."
+  },
+  "战斗_HP2": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          518,
+          620,
+          98,
+          24
+        ],
+        "expected": "^(0|[1-9][0-9]{0,2}(,[0-9]{3})?)$",
+        "threshold": 0.98
+      }
+    },
+    "doc": "Diagnostic-only CN HP OCR using the FGO-py text ROI. Runtime retains its whole-glyph checks; malformed grouping or trailing punctuation is rejected."
+  },
+  "战斗_NP卡3": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          856,
+          655,
+          76,
+          17
+        ],
+        "only_rec": true,
+        "expected": "^(0|[1-9][0-9]?|[12][0-9]{2}|300)%$",
+        "threshold": 0.98
+      }
+    },
+    "doc": "Diagnostic-only adaptation of MaaFgo NP OCR. Expanded glyph ROI excludes the gauge; high confidence cannot detect a fully missing digit. Not used for runtime numeric facts."
+  },
+  "战斗_HP3": {
+    "recognition": {
+      "type": "OCR",
+      "param": {
+        "roi": [
+          836,
+          620,
+          98,
+          24
+        ],
+        "expected": "^(0|[1-9][0-9]{0,2}(,[0-9]{3})?)$",
+        "threshold": 0.98
+      }
+    },
+    "doc": "Diagnostic-only CN HP OCR using the FGO-py text ROI. Runtime retains its whole-glyph checks; malformed grouping or trailing punctuation is rejected."
+  }
+}

@@ -91,6 +91,47 @@ fn classify_ally_hp(component: &Component) -> Option<(u8, f64)> {
 // Independent CN ally HP font samples; fixture name and field identify provenance.
 const ALLY_HP_GLYPHS: &[(u8, &[&str])] = &[
     (
+        4,
+        &[
+            // live-saber-retest-turn2, field 3 (17462), digit 4
+            "......###..",
+            "......###..",
+            ".....####..",
+            "....#####..",
+            "...##..##..",
+            "...##..##..",
+            "..##...##..",
+            ".##....##..",
+            "###....##..",
+            "###########",
+            "###########",
+            ".......##..",
+            ".......##..",
+            ".......##..",
+        ],
+    ),
+    (
+        7,
+        &[
+            // live-saber-turn1, field 1 (14907)
+            ".#........",
+            "##########",
+            ".......###",
+            ".......##.",
+            "......##..",
+            "......##..",
+            ".....##...",
+            ".....##...",
+            "....##....",
+            "....##....",
+            "...###....",
+            "...##.....",
+            "...##.....",
+            "..###.....",
+            "..##......",
+        ],
+    ),
+    (
         6,
         &[
             // live-enemy-standard-three, field 1
@@ -557,6 +598,11 @@ mod hp_tests {
     #[test]
     fn ally_hp_real_frames() {
         for (name, expected) in [
+            ("live-saber-retest-turn2", [15268, 10848, 17462]),
+            ("live-saber-retest-turn3", [8427, 9668, 16372]),
+            ("live-saber-turn1", [14907, 15380, 20196]),
+            ("live-saber-turn1-charged", [15268, 15380, 20196]),
+            ("live-saber-turn3", [5108, 6255, 11738]),
             ("step4", [14219, 16057, 21455]),
             ("step10", [17793, 16057, 20455]),
             ("owner-mac-turn", [17793, 16057, 20455]),

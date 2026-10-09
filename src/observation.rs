@@ -5,6 +5,7 @@ use std::{error::Error, fmt};
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RecognitionMethod {
+    MaaOcr,
     BinaryGlyphDifference,
     TemplateDifference,
     ColorChromaPixelCount,
@@ -13,6 +14,7 @@ pub enum RecognitionMethod {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DetectorKind {
+    CommandCardColor,
     BattleSpeed,
     NpPercent,
     AllyHp,

@@ -156,6 +156,17 @@ impl Vision {
                     }
                 }
                 *detected = best.map(|(_, color)| color);
+                // Decorative card lettering is not reliably read by every OCR
+                // model. Keep positive template evidence; use OCR only for a miss.
+                #[cfg(feature = "maa")]
+                if detected.is_none()
+                    && let Some(reading) = self.maa_card_color(frame, i, control)?
+                {
+                    *detected = reading.value();
+                    if facts.contains(RequiredBattleFacts::CARDS) {
+                        s.card_color_recognition[i] = reading;
+                    }
+                }
             }
             s.command_cards = colors.iter().filter(|color| color.is_some()).count() >= 4;
             if facts.contains(RequiredBattleFacts::CARDS) {

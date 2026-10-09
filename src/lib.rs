@@ -12,6 +12,8 @@ mod farm_vision;
 pub mod farming;
 mod hp_ocr;
 pub mod layout;
+#[cfg(feature = "maa")]
+pub mod maa;
 mod np_ocr;
 pub mod observation;
 pub mod profile;

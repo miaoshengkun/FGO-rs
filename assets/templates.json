@@ -1510,54 +1510,54 @@
     "threshold": 0.1
   },
   "support_card_1": {
-    "file": "rider/supportCard.png",
+    "file": "common/support-card-masked.png",
     "region": {
       "x": 125,
       "y": 395,
       "width": 113,
       "height": 51
     },
-    "threshold": 0.09
+    "threshold": 0.06
   },
   "support_card_2": {
-    "file": "rider/supportCard.png",
+    "file": "common/support-card-masked.png",
     "region": {
       "x": 382,
       "y": 395,
       "width": 113,
       "height": 51
     },
-    "threshold": 0.09
+    "threshold": 0.06
   },
   "support_card_3": {
-    "file": "rider/supportCard.png",
+    "file": "common/support-card-masked.png",
     "region": {
       "x": 639,
       "y": 395,
       "width": 113,
       "height": 51
     },
-    "threshold": 0.09
+    "threshold": 0.06
   },
   "support_card_4": {
-    "file": "rider/supportCard.png",
+    "file": "common/support-card-masked.png",
     "region": {
       "x": 896,
       "y": 395,
       "width": 113,
       "height": 51
     },
-    "threshold": 0.09
+    "threshold": 0.06
   },
   "support_card_5": {
-    "file": "rider/supportCard.png",
+    "file": "common/support-card-masked.png",
     "region": {
       "x": 1153,
       "y": 395,
       "width": 113,
       "height": 51
     },
-    "threshold": 0.09
+    "threshold": 0.06
   },
   "choose_friend": {
     "file": "common/choosefriend.png",
@@ -1810,7 +1810,7 @@
     "threshold": 0.035
   },
   "result_tap": {
-    "file": "live/result-tap.png",
+    "file": "live/result-tap-masked.png",
     "region": {
       "x": 495,
       "y": 622,
@@ -1876,8 +1876,9 @@
   },
   "saber_quest_vii": {
     "file": "saber/questVII.png",
+    "alternatives": ["saber/questVII-masked.png"],
     "region": { "x": 760, "y": 90, "width": 260, "height": 490 },
-    "threshold": 0.08
+    "threshold": 0.008
   },
   "saber_filter": {
     "file": "saber/saberFilter.png",

@@ -15,7 +15,10 @@ Rust 核心 + Rhai 策略脚本的 FGO 自动化项目，目标为 Windows 和 m
 - 暂停、继续、停止、Ctrl-C 和 ADB 子进程超时处理。
 - 从 Atlas Academy 按区服同步版本化的本地从者索引，并按 Profile 缓存所需详情；默认国服。
 
-运行不依赖 Python、Qt、OpenCV 或 ONNX Runtime。实机输入需要单独提供 ADB。
+默认构建不依赖 Python、Qt、OpenCV 或 ONNX Runtime。实机输入需要单独提供 ADB。
+
+以识别稳定性为优先的 MaaFramework 可选后端已接入原生模板匹配、卡色 OCR 补充及 HP／NP 对照诊断节点；构建时启用 `--features maa`，运行时提供 `--maa-library` 及可选 `--maa-ocr-model`。该后端使用 SDK 自带的 CV / OCR 库。对照结论、迁移范围、用法与验收边界见 MaaFgo 识别迁移。
+
 当前已支持 CN 普通 1～3 敌与六敌布局（含部分敌人退场后的稀疏占位）的 HP、充能和最高 HP 选敌，以及指令卡同从者分组、Atlas 身份识别、原始队伍槽位感知的宝具排序和 Profile 化选卡评分；已配置从者及候选助战的宝具与普通卡可以共同形成同色 Chain 或 Brave Chain。普通布局已有单敌、二敌和三敌实机语料，其他区服、完整 OCR 和 GUI 尚未迁移。macOS 的 CI 已配置，但尚未实际运行验证。
 
 ## 构建

@@ -108,7 +108,7 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
     let &(suffix_start, suffix_end) = runs.last().unwrap();
     if !(50..=52).contains(&suffix_start)
         || !(68..=70).contains(&suffix_end)
-        || !(48..=50).contains(&runs[runs.len() - 2].1)
+        || !(47..=50).contains(&runs[runs.len() - 2].1)
         || runs
             .windows(2)
             .any(|pair| !(1..=5).contains(&(pair[1].0 - pair[0].1)))
@@ -154,6 +154,11 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
             if digit == 10 || (index == 0 && digit == 0 && runs.len() > 2) {
                 return unknown(evidence);
             }
+            // The narrow final 1 can end one pixel earlier (71% on the
+            // live Saber turn-3 frame). Other digits still need the old edge.
+            if index == runs.len() - 2 && right == 47 && digit != 1 {
+                return unknown(evidence);
+            }
             value = value * 10 + digit as u16;
         }
     }
@@ -165,6 +170,42 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
 // CN NP text, top 12 rows above the gauge border. Independent of enemy HP fonts.
 // Samples: step4/5/9/10 and live-enemy-standard-one/two/three fixtures.
 const GLYPHS: &[(u8, [&str; HEIGHT])] = &[
+    (
+        2,
+        [
+            // live-saber-retest-turn3, field 3 (220%), middle digit 2
+            "....###....",
+            "..#######..",
+            ".###....##.",
+            "###.....##.",
+            "........###",
+            "........##.",
+            "........##.",
+            "......###..",
+            ".....###...",
+            "....###....",
+            "...###.....",
+            "..##.......",
+        ],
+    ),
+    (
+        3,
+        [
+            // live-saber-turn1-charged, field 1 (34%)
+            "....###....",
+            "..#######..",
+            ".##....###.",
+            "###.....##.",
+            "........##.",
+            "........##.",
+            "......###..",
+            "....####...",
+            ".....####..",
+            "........##.",
+            "........###",
+            "........###",
+        ],
+    ),
     (
         0,
         [
@@ -463,6 +504,11 @@ mod tests {
     #[test]
     fn real_np_corpus_covers_every_digit_zero_and_three_hundred() {
         for (name, expected) in [
+            ("live-saber-retest-turn2", [Some(34), Some(53), Some(92)]),
+            ("live-saber-retest-turn3", [Some(76), Some(77), Some(220)]),
+            ("live-saber-turn1", [Some(14), Some(15), Some(80)]),
+            ("live-saber-turn1-charged", [Some(34), Some(35), Some(160)]),
+            ("live-saber-turn3", [Some(72), Some(71), Some(123)]),
             ("step4", [Some(0), Some(70), Some(78)]),
             ("step5", [Some(25), Some(70), Some(78)]),
             ("step9", [Some(82), Some(70), Some(78)]),
