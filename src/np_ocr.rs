@@ -1,5 +1,5 @@
-//! Fixed-font CN NP percentages. Decode every digit and the percent suffix;
-//! gauge fill and NP-card glow are not numeric evidence.
+//! CN NP text completeness and the fixed-font fallback for runs without OCR.
+//! Gauge fill and NP-card glow are not numeric evidence.
 use crate::{
     observation::{
         DetectorKind, Recognition, RecognitionEvidence, RecognitionMethod, ScoreDirection,
@@ -24,6 +24,88 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
         feature_floor: None,
     };
     let unknown = |evidence| Recognition::unknown(UnknownReason::NoCandidate, Some(evidence));
+    let Some(NpLayout { pixels, runs }) = np_layout(frame, roi) else {
+        return unknown(evidence);
+    };
+    let width = roi.width as usize;
+    let mut value = 0u16;
+    let mut worst: f64 = 0.0;
+    for (index, &(left, right)) in runs.iter().enumerate() {
+        let mut scores = [f64::INFINITY; 11];
+        let source_width = right - left;
+        for &(digit, rows) in GLYPHS {
+            let target_width = rows[0].len();
+            let mut mismatch = 0;
+            for (y, row) in rows.iter().enumerate() {
+                for x in 0..target_width {
+                    mismatch += usize::from(
+                        pixels[y * width + left + x * source_width / target_width]
+                            != (row.as_bytes()[x] == b'#'),
+                    );
+                }
+            }
+            let score = mismatch as f64 / (HEIGHT * target_width) as f64
+                + source_width.abs_diff(target_width) as f64 * 0.02;
+            scores[digit as usize] = scores[digit as usize].min(score);
+        }
+        let mut ranked: Vec<_> = scores.into_iter().enumerate().collect();
+        ranked.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let (digit, score) = ranked[0];
+        worst = worst.max(score);
+        evidence.score = worst;
+        if score > THRESHOLD {
+            return unknown(evidence);
+        }
+        if ranked[1].1 - score < MARGIN {
+            return Recognition::unknown(UnknownReason::Ambiguous, Some(evidence));
+        }
+        if index == runs.len() - 1 {
+            if digit != 10 {
+                return unknown(evidence);
+            }
+        } else {
+            if digit == 10 || (index == 0 && digit == 0 && runs.len() > 2) {
+                return unknown(evidence);
+            }
+            // The narrow final 1 can end one pixel earlier (71% on the
+            // live Saber turn-3 frame). Other digits still need the old edge.
+            if index == runs.len() - 2 && right == 47 && digit != 1 {
+                return unknown(evidence);
+            }
+            value = value * 10 + digit as u16;
+        }
+    }
+    if value > 300 {
+        return unknown(evidence);
+    }
+    Recognition::known(value, evidence)
+}
+
+/// Check the visible text's geometry without classifying any digit. OCR can
+/// confidently turn a damaged 300% into 30%; the missing column span rejects it.
+#[cfg(feature = "maa")]
+pub(crate) fn complete_np_text(frame: &RgbaImage, roi: Rect, value: u16) -> bool {
+    let Some(layout) = np_layout(frame, roi) else {
+        return false;
+    };
+    let digit_count = if value < 10 {
+        1
+    } else if value < 100 {
+        2
+    } else {
+        3
+    };
+    value <= 300
+        && layout.runs.len() == digit_count + 1
+        && (layout.runs[digit_count - 1].1 != 47 || value % 10 == 1)
+}
+
+struct NpLayout {
+    pixels: Vec<bool>,
+    runs: Vec<(usize, usize)>,
+}
+
+fn np_layout(frame: &RgbaImage, roi: Rect) -> Option<NpLayout> {
     if roi.height != HEIGHT as u32
         || roi.width != 76
         || roi
@@ -35,7 +117,7 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
             .checked_add(roi.height)
             .is_none_or(|y| y > frame.height())
     {
-        return unknown(evidence);
+        return None;
     }
     let width = roi.width as usize;
     let mut pixels = vec![false; width * HEIGHT];
@@ -93,7 +175,7 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
                 // components must reject the whole number, never disappear.
                 if rows > 2 {
                     if rows < 10 {
-                        return unknown(evidence);
+                        return None;
                     }
                     runs.push((left, x));
                 }
@@ -103,7 +185,7 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
         }
     }
     if !(2..=4).contains(&runs.len()) {
-        return unknown(evidence);
+        return None;
     }
     let &(suffix_start, suffix_end) = runs.last().unwrap();
     if !(50..=52).contains(&suffix_start)
@@ -113,59 +195,9 @@ pub(crate) fn read_np_percent(frame: &RgbaImage, roi: Rect) -> Recognition<u16> 
             .windows(2)
             .any(|pair| !(1..=5).contains(&(pair[1].0 - pair[0].1)))
     {
-        return unknown(evidence);
+        return None;
     }
-    let mut value = 0u16;
-    let mut worst: f64 = 0.0;
-    for (index, &(left, right)) in runs.iter().enumerate() {
-        let mut scores = [f64::INFINITY; 11];
-        let source_width = right - left;
-        for &(digit, rows) in GLYPHS {
-            let target_width = rows[0].len();
-            let mut mismatch = 0;
-            for (y, row) in rows.iter().enumerate() {
-                for x in 0..target_width {
-                    mismatch += usize::from(
-                        pixels[y * width + left + x * source_width / target_width]
-                            != (row.as_bytes()[x] == b'#'),
-                    );
-                }
-            }
-            let score = mismatch as f64 / (HEIGHT * target_width) as f64
-                + source_width.abs_diff(target_width) as f64 * 0.02;
-            scores[digit as usize] = scores[digit as usize].min(score);
-        }
-        let mut ranked: Vec<_> = scores.into_iter().enumerate().collect();
-        ranked.sort_by(|a, b| a.1.total_cmp(&b.1));
-        let (digit, score) = ranked[0];
-        worst = worst.max(score);
-        evidence.score = worst;
-        if score > THRESHOLD {
-            return unknown(evidence);
-        }
-        if ranked[1].1 - score < MARGIN {
-            return Recognition::unknown(UnknownReason::Ambiguous, Some(evidence));
-        }
-        if index == runs.len() - 1 {
-            if digit != 10 {
-                return unknown(evidence);
-            }
-        } else {
-            if digit == 10 || (index == 0 && digit == 0 && runs.len() > 2) {
-                return unknown(evidence);
-            }
-            // The narrow final 1 can end one pixel earlier (71% on the
-            // live Saber turn-3 frame). Other digits still need the old edge.
-            if index == runs.len() - 2 && right == 47 && digit != 1 {
-                return unknown(evidence);
-            }
-            value = value * 10 + digit as u16;
-        }
-    }
-    if value > 300 {
-        return unknown(evidence);
-    }
-    Recognition::known(value, evidence)
+    Some(NpLayout { pixels, runs })
 }
 // CN NP text, top 12 rows above the gauge border. Independent of enemy HP fonts.
 // Samples: step4/5/9/10 and live-enemy-standard-one/two/three fixtures.

@@ -14,7 +14,7 @@ use crate::{
         DetectorKind, Recognition, RecognitionEvidence, RecognitionMethod, ScoreDirection,
         UnknownReason,
     },
-    vision::{FrameMatcher, Point, Vision},
+    vision::{FrameMatcher, Point, Rect, Vision},
 };
 use anyhow::Result;
 use image::RgbaImage;
@@ -182,10 +182,19 @@ impl Vision {
                 });
             }
             if facts.contains(RequiredBattleFacts::NP) {
-                s.np_percent = UI_LAYOUT_V1
+                for (roi, reading) in UI_LAYOUT_V1
                     .battle
                     .np_percent
-                    .map(|roi| read_np_percent(frame, roi));
+                    .into_iter()
+                    .zip(&mut s.np_percent)
+                {
+                    #[cfg(feature = "maa")]
+                    if let Some(native) = self.maa_np_percent(frame, roi, control)? {
+                        *reading = native;
+                        continue;
+                    }
+                    *reading = read_np_percent(frame, roi);
+                }
             }
             if facts.contains(RequiredBattleFacts::MARKERS) {
                 for name in marker_names {
@@ -556,17 +565,25 @@ impl Vision {
         )
     }
 
-    fn enemy_states_standard(&self, matcher: &mut FrameMatcher<'_>) -> Result<EnemyObservation> {
-        let hp = {
-            let frame = matcher.frame();
-            UI_LAYOUT_V1
-                .battle
-                .enemy_hp_standard
-                .map(|region| read_large_white_digits(frame, region, 5))
-        };
-        if hp.iter().all(Option::is_none) {
-            return Ok(EnemyObservation::default());
+    fn enemy_hp(
+        &self,
+        matcher: &FrameMatcher<'_>,
+        region: Rect,
+        standard: bool,
+    ) -> Result<Option<u32>> {
+        #[cfg(feature = "maa")]
+        if let Some(reading) = self.maa_enemy_hp(matcher.frame(), region, matcher.control())? {
+            // A configured OCR miss must not silently switch recognizers.
+            return Ok(reading.value());
         }
+        Ok(if standard {
+            read_large_white_digits(matcher.frame(), region, 5)
+        } else {
+            read_white_digits(matcher.frame(), region, 6)
+        })
+    }
+
+    fn enemy_states_standard(&self, matcher: &mut FrameMatcher<'_>) -> Result<EnemyObservation> {
         let mut charges = [None; 3];
         for (index, charge) in charges.iter_mut().enumerate() {
             *charge = self.enemy_charge(
@@ -581,9 +598,19 @@ impl Vision {
         }
 
         let present = charges.map(|charge| charge.is_some());
-        if !present.iter().any(|value| *value)
-            || (0..3).any(|index| present[index] != hp[index].is_some())
+        if !present.iter().any(|value| *value) {
+            return Ok(EnemyObservation::default());
+        }
+        let mut hp = [None; 3];
+        for (index, region) in UI_LAYOUT_V1
+            .battle
+            .enemy_hp_standard
+            .into_iter()
+            .enumerate()
         {
+            hp[index] = self.enemy_hp(matcher, region, true)?;
+        }
+        if (0..3).any(|index| present[index] != hp[index].is_some()) {
             return Ok(EnemyObservation::default());
         }
 
@@ -609,16 +636,6 @@ impl Vision {
     }
 
     fn enemy_states_six(&self, matcher: &mut FrameMatcher<'_>) -> Result<EnemyObservation> {
-        let hp = {
-            let frame = matcher.frame();
-            UI_LAYOUT_V1
-                .battle
-                .enemy_hp_six
-                .map(|region| read_white_digits(frame, region, 6))
-        };
-        if hp.iter().all(Option::is_none) {
-            return Ok(EnemyObservation::default());
-        }
         let mut charges = [None; 6];
         for (index, charge) in charges.iter_mut().enumerate() {
             *charge = self.enemy_charge(
@@ -633,9 +650,14 @@ impl Vision {
         }
 
         let present = charges.map(|charge| charge.is_some());
-        if !present.iter().any(|value| *value)
-            || (0..6).any(|index| present[index] != hp[index].is_some())
-        {
+        if !present.iter().any(|value| *value) {
+            return Ok(EnemyObservation::default());
+        }
+        let mut hp = [None; 6];
+        for (index, region) in UI_LAYOUT_V1.battle.enemy_hp_six.into_iter().enumerate() {
+            hp[index] = self.enemy_hp(matcher, region, false)?;
+        }
+        if (0..6).any(|index| present[index] != hp[index].is_some()) {
             return Ok(EnemyObservation::default());
         }
 
@@ -909,6 +931,49 @@ mod reflow_tests {
                 current: 0,
                 total: 5
             })
+        );
+    }
+
+    #[cfg(feature = "maa")]
+    #[test]
+    #[ignore = "requires FGO_MAA_LIBRARY and FGO_MAA_OCR_MODEL; verifies sparse native enemy OCR"]
+    fn six_enemy_reflow_with_native_numeric_ocr() {
+        use crate::maa::MaaRecognizer;
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let library =
+            PathBuf::from(std::env::var_os("FGO_MAA_LIBRARY").expect("set FGO_MAA_LIBRARY"));
+        let model =
+            PathBuf::from(std::env::var_os("FGO_MAA_OCR_MODEL").expect("set FGO_MAA_OCR_MODEL"));
+        let mut vision = Vision::load(&root.join("assets/templates.json")).unwrap();
+        vision
+            .set_maa_backend(
+                MaaRecognizer::new(&library, &[root.join("assets/maa")], Some(&model)).unwrap(),
+            )
+            .unwrap();
+        let raw = image::open(root.join("tests/fixtures/live-enemy-reflow-one.png"))
+            .unwrap()
+            .to_rgba8();
+        let frame = normalize(&raw, None).unwrap().0;
+        let control = Control::new(Duration::from_secs(30));
+        for (index, roi) in UI_LAYOUT_V1.battle.enemy_hp_six.into_iter().enumerate() {
+            let reading = vision.maa_enemy_hp(&frame, roi, &control).unwrap().unwrap();
+            assert_eq!(
+                reading.value(),
+                if index == 0 { Some(145_196) } else { None }
+            );
+            assert_eq!(
+                reading.evidence().unwrap().method,
+                RecognitionMethod::MaaOcr
+            );
+        }
+        let observation = vision
+            .enemy_states_six(&mut vision.frame_matcher(&frame, &control))
+            .unwrap();
+        assert_eq!(observation.layout, Some(EnemyLayout::Six));
+        assert_eq!(observation.selected, Some(EnemySlot::One));
+        assert_eq!(
+            observation.enemies.map(|enemy| enemy.map(|enemy| enemy.hp)),
+            [Some(145_196), None, None, None, None, None]
         );
     }
 

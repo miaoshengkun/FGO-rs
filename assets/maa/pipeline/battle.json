@@ -211,7 +211,7 @@
         "threshold": 0.98
       }
     },
-    "doc": "Diagnostic-only adaptation of MaaFgo NP OCR. Expanded glyph ROI excludes the gauge; high confidence cannot detect a fully missing digit. Not used for runtime numeric facts."
+    "doc": "Standalone NP diagnostic. Runtime uses the same cropped OCR parameters derived from its layout, with additional character-count and spacing validation for missing digits."
   },
   "战斗_HP1": {
     "recognition": {
@@ -244,7 +244,7 @@
         "threshold": 0.98
       }
     },
-    "doc": "Diagnostic-only adaptation of MaaFgo NP OCR. Expanded glyph ROI excludes the gauge; high confidence cannot detect a fully missing digit. Not used for runtime numeric facts."
+    "doc": "Standalone NP diagnostic. Runtime uses the same cropped OCR parameters derived from its layout, with additional character-count and spacing validation for missing digits."
   },
   "战斗_HP2": {
     "recognition": {
@@ -277,7 +277,7 @@
         "threshold": 0.98
       }
     },
-    "doc": "Diagnostic-only adaptation of MaaFgo NP OCR. Expanded glyph ROI excludes the gauge; high confidence cannot detect a fully missing digit. Not used for runtime numeric facts."
+    "doc": "Standalone NP diagnostic. Runtime uses the same cropped OCR parameters derived from its layout, with additional character-count and spacing validation for missing digits."
   },
   "战斗_HP3": {
     "recognition": {

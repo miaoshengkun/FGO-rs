@@ -77,6 +77,8 @@ impl MaaRecognizer {
             maa_framework::util::version()
         );
         let resource = Resource::new().context("create MaaFramework resource")?;
+        // v5.14.2's OCRResMgr::use_coreml explicitly falls back to CPU, even
+        // when Auto selects CoreML. Keep the actual OCR provider explicit.
         resource
             .use_cpu()
             .context("select MaaFramework CPU inference")?;

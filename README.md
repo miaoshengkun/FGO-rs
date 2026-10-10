@@ -13,12 +13,12 @@ Rust 核心 + Rhai 策略的 FGO 自动化项目，提供 Windows / macOS CLI �
 - 技能冷却确认、我方目标选择、1/5 换人、御主技能、首轮三宝具及后续回合选卡。
 - 牵绊、经验、战利品结算及连续出击；战斗次数、苹果额度和总运行时间限制。
 - 暂停、继续、停止、Ctrl-C 和 ADB 子进程超时处理。
-- 可选 Slint 桌面界面：设备发现与预览、截图点选固定位置刷图、按序号选编队、Profile/脚本和预算设置、Rust/Maa 后端、开始/暂停/继续/停止及运行日志。
+- 可选 Slint 桌面界面：设备发现与预览、截图点选固定位置刷图、按序号选编队、Profile/脚本和预算设置、MaaFramework 识别、开始/暂停/继续/停止及运行日志。
 - 从 Atlas Academy 按区服同步版本化的本地从者索引，并按 Profile 缓存所需详情；默认国服。
 
 默认构建不依赖 Python、Qt、OpenCV 或 ONNX Runtime。实机输入需要单独提供 ADB。
 
-可选 MaaFramework 后端提供原生模板匹配、卡色 OCR 补充及 HP / NP 诊断；构建时启用 `--features maa`，运行时提供 `--maa-library` 和可选 `--maa-ocr-model`。HP / NP、身份与充能仍由 Rust 核心判断，详见 [识别后端](docs/recognition.md)。
+可选 MaaFramework 后端提供原生模板匹配、卡色 OCR 补充；配置 OCR 模型后，敌方 HP 和 NP 数字也由 Maa 识别。NP 仍检查文字完整性，友方 HP 沿用 Rust；身份、充能和动作校验由 Rust 核心判断。构建时启用 `--features maa`，运行时提供 `--maa-library` 和可选 `--maa-ocr-model`，详见 [识别后端](docs/recognition.md)。
 
 当前已支持 CN 普通 1～3 敌与六敌布局（含部分敌人退场后的稀疏占位）的 HP、充能和最高 HP 选敌，以及指令卡同从者分组、Atlas 身份识别、原始队伍槽位感知的宝具排序和 Profile 化选卡评分；已配置从者及候选助战的宝具与普通卡可以共同形成同色 Chain 或 Brave Chain。普通布局已有单敌、二敌和三敌实机语料；其他区服、完整 OCR、GUI 配置持久化和安装包尚待补齐。桌面窗口已在 macOS ARM64 本机验收，Windows 和 Intel macOS 尚待运行验收。
 
@@ -35,12 +35,12 @@ Windows MSVC 需要 Visual Studio C++ Build Tools；macOS 需要 Xcode Command L
 ## 桌面界面
 
 ```sh
-# Rust 识别后端
+# GUI 固定使用 MaaFramework，gui feature 自动启用 maa
 cargo run --locked --features gui --bin fgo-rs-gui
-# 同时启用可选 MaaFramework 后端
-cargo run --locked --features gui,maa --bin fgo-rs-gui -- --adb /path/to/adb
+# 指定 ADB
+cargo run --locked --features gui --bin fgo-rs-gui -- --adb /path/to/adb
 # 发布构建
-cargo build --locked --release --features gui,maa --bin fgo-rs-gui
+cargo build --locked --release --features gui --bin fgo-rs-gui
 ```
 
 默认 **固定位置刷图、只读演练、1 场、0 苹果**；发送点击/滑动需在界面选择“执行输入”。固定位置模式目前支持 CN 界面：
@@ -62,7 +62,7 @@ cargo run --locked --features gui --bin fgo-rs-gui -- \
   --profile profiles/rider-v1.json --script scripts/inspect_rider.rhai
 ```
 
-Maa 后端需另提供匹配版本的 SDK 动态库与可选 OCR 模型，路径可在界面设置。资源定位、只读模式限制及平台范围见 [GUI 使用](docs/gui.md)。
+GUI 需提供匹配版本的 SDK 动态库与完整 OCR 模型，路径可在界面设置；缺失时会提示并阻止开始任务。CLI 仍支持不依赖 SDK 的 Rust 后端。资源定位、只读模式限制及平台范围见 [GUI 使用](docs/gui.md)。
 
 ## 连接与检查
 

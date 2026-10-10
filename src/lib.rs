@@ -16,6 +16,8 @@ mod hp_ocr;
 pub mod layout;
 #[cfg(feature = "maa")]
 pub mod maa;
+#[cfg(feature = "maa")]
+mod maa_numeric;
 mod np_ocr;
 pub mod observation;
 pub mod profile;

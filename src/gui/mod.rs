@@ -114,11 +114,6 @@ pub fn run(options: GuiOptions) -> Result<()> {
         vec!["正在发现设备…".into()]
     }));
     ui.set_device_index(0);
-    ui.set_backends(strings(if cfg!(feature = "maa") {
-        vec!["Rust 识别".into(), "MaaFramework 识别".into()]
-    } else {
-        vec!["Rust 识别".into()]
-    }));
     let data = root.join("data/atlas");
     ui.set_data_dir(
         if data.is_dir() {
@@ -398,21 +393,8 @@ impl Controller {
             .get(usize::try_from(ui.get_profile_index())?)
             .context("请选择 Profile")?
             .clone();
-        let recognition = if ui.get_backend_index() == 1 {
-            ensure!(cfg!(feature = "maa"), "当前构建没有 MaaFramework 支持");
-            ensure!(
-                !ui.get_maa_library().trim().is_empty(),
-                "请选择 MaaFramework 动态库"
-            );
-            RecognitionConfig {
-                library: Some(PathBuf::from(ui.get_maa_library().as_str())),
-                resources: Vec::new(),
-                ocr_model: (!ui.get_maa_ocr().trim().is_empty())
-                    .then(|| PathBuf::from(ui.get_maa_ocr().as_str())),
-            }
-        } else {
-            RecognitionConfig::default()
-        };
+        let recognition =
+            maa_recognition(ui.get_maa_library().as_str(), ui.get_maa_ocr().as_str())?;
         let region = match ui.get_region_index() {
             0 => Region::Cn,
             1 => Region::Jp,
@@ -801,6 +783,32 @@ fn choices(
     Ok((paths, selected))
 }
 
+fn maa_recognition(library: &str, ocr_model: &str) -> Result<RecognitionConfig> {
+    let library = library.trim();
+    let ocr_model = ocr_model.trim();
+    ensure!(!library.is_empty(), "请选择 MaaFramework 动态库");
+    let library = PathBuf::from(library);
+    ensure!(
+        library.is_file(),
+        "MaaFramework 动态库不存在：{}",
+        library.display()
+    );
+    ensure!(!ocr_model.is_empty(), "请选择 OCR 模型目录");
+    let ocr_model = PathBuf::from(ocr_model);
+    for file in ["det.onnx", "rec.onnx", "keys.txt"] {
+        ensure!(
+            ocr_model.join(file).is_file(),
+            "OCR 模型缺少 {file}：{}",
+            ocr_model.display()
+        );
+    }
+    Ok(RecognitionConfig {
+        library: Some(library),
+        resources: Vec::new(),
+        ocr_model: Some(ocr_model),
+    })
+}
+
 fn resource_root(explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(root) = explicit {
         let root = root.canonicalize()?;
@@ -862,6 +870,48 @@ fn user_data_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gui_requires_native_library_and_complete_ocr_before_starting() {
+        let folder = tempfile::tempdir().unwrap();
+        let library = folder.path().join("MaaFramework test library");
+        let model = folder.path().join("OCR 模型");
+        let library_text = library.to_str().unwrap();
+        let model_text = model.to_str().unwrap();
+        assert!(
+            maa_recognition("", model_text)
+                .unwrap_err()
+                .to_string()
+                .contains("请选择 MaaFramework 动态库")
+        );
+        assert!(
+            maa_recognition(library_text, model_text)
+                .unwrap_err()
+                .to_string()
+                .contains("动态库不存在")
+        );
+        std::fs::write(&library, "").unwrap();
+        assert!(
+            maa_recognition(library_text, "")
+                .unwrap_err()
+                .to_string()
+                .contains("请选择 OCR 模型目录")
+        );
+        std::fs::create_dir(&model).unwrap();
+        for file in ["det.onnx", "rec.onnx", "keys.txt"] {
+            assert!(
+                maa_recognition(library_text, model_text)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(file)
+            );
+            std::fs::write(model.join(file), "").unwrap();
+        }
+        let config =
+            maa_recognition(&format!(" {library_text} "), &format!(" {model_text} ")).unwrap();
+        assert_eq!(config.library, Some(library));
+        assert_eq!(config.ocr_model, Some(model));
+    }
+
     #[test]
     fn screenshot_selection_maps_to_normalized_pixels_and_rejects_outside_image() {
         assert_eq!(preview_point(0.5, 0.5), Some(Point { x: 640, y: 360 }));

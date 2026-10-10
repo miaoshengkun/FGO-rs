@@ -18,6 +18,7 @@ pub enum DetectorKind {
     BattleSpeed,
     NpPercent,
     AllyHp,
+    EnemyHp,
     ServantSkillCooldown,
     MasterSkillCooldown,
     SkillIconChroma,
@@ -56,6 +57,7 @@ pub struct FieldEvidence {
 #[serde(rename_all = "snake_case")]
 pub enum UnknownReason {
     NoCandidate,
+    IncompleteText,
     Ambiguous,
     ConflictingCandidates,
     NoSupportMarker,

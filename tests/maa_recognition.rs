@@ -4,6 +4,7 @@ use fgo_rs::{
     battle::{BattleObservationRequest, RequiredBattleFacts},
     control::Control,
     maa::MaaRecognizer,
+    observation::{Recognition, RecognitionMethod, UnknownReason},
     vision::{Vision, normalize},
 };
 use image::RgbaImage;
@@ -446,6 +447,167 @@ fn numeric_ocr_diagnostics_do_not_bypass_whole_number_validation() {
     assert!(observation.idle());
     assert!(observation.np_percent[0].is_unknown());
     assert_eq!(observation.np_percent[0].value(), None);
+    assert!(matches!(
+        observation.np_percent[0],
+        Recognition::Unknown {
+            reason: UnknownReason::IncompleteText,
+            ..
+        }
+    ));
+    let evidence = observation.np_percent[0].evidence().unwrap();
+    assert_eq!(evidence.method, RecognitionMethod::MaaOcr);
+    assert!(evidence.score > 0.99);
+}
+
+#[test]
+#[ignore = "requires FGO_MAA_LIBRARY and FGO_MAA_OCR_MODEL; verifies runtime OCR and safety guards"]
+fn runtime_maa_numbers_preserve_real_values_empty_slots_and_unknowns() {
+    use fgo_rs::battle::EnemyLayout;
+    let model =
+        PathBuf::from(std::env::var_os("FGO_MAA_OCR_MODEL").expect("set FGO_MAA_OCR_MODEL"));
+    let mut vision = Vision::load(&root().join("assets/templates.json")).unwrap();
+    vision.set_maa_backend(backend(Some(&model))).unwrap();
+    let control = Control::new(Duration::from_secs(120));
+    let inspect = |image: &RgbaImage, facts| {
+        vision
+            .battle_state_with_request(
+                image,
+                &control,
+                &[],
+                BattleObservationRequest::new(facts, &[]),
+            )
+            .unwrap()
+    };
+    for (file, expected) in [
+        (
+            "live-saber-retest-turn2.png",
+            [Some(34), Some(53), Some(92)],
+        ),
+        (
+            "live-saber-retest-turn3.png",
+            [Some(76), Some(77), Some(220)],
+        ),
+        ("live-saber-turn1.png", [Some(14), Some(15), Some(80)]),
+        (
+            "live-saber-turn1-charged.png",
+            [Some(34), Some(35), Some(160)],
+        ),
+        ("live-saber-turn3.png", [Some(72), Some(71), Some(123)]),
+        ("step4.png", [Some(0), Some(70), Some(78)]),
+        ("step5.png", [Some(25), Some(70), Some(78)]),
+        ("step9.png", [Some(82), Some(70), Some(78)]),
+        ("step10.png", [Some(100), Some(100), Some(148)]),
+        ("live-enemy-standard-one.png", [Some(300), None, None]),
+        (
+            "live-enemy-standard-two.png",
+            [Some(90), Some(64), Some(74)],
+        ),
+        (
+            "live-enemy-standard-three.png",
+            [Some(60), Some(24), Some(0)],
+        ),
+        ("owner-mac-turn.png", [Some(100), Some(100), Some(148)]),
+        (
+            "owner-continuous-turn.png",
+            [Some(100), Some(100), Some(148)],
+        ),
+    ] {
+        let state = inspect(&frame(file), RequiredBattleFacts::NP);
+        assert!(state.idle(), "{file}");
+        assert_eq!(
+            state.np_percent.map(Recognition::value),
+            expected,
+            "{file}: {:?}",
+            state.np_percent
+        );
+        for reading in state.np_percent {
+            assert_eq!(
+                reading.evidence().unwrap().method,
+                RecognitionMethod::MaaOcr,
+                "{file}"
+            );
+        }
+    }
+    for (file, layout, expected) in [
+        (
+            "live-enemy-standard-one.png",
+            EnemyLayout::Standard,
+            [None, Some(252_064), None, None, None, None],
+        ),
+        (
+            "live-enemy-standard-two.png",
+            EnemyLayout::Standard,
+            [None, Some(1_414), Some(2_340), None, None, None],
+        ),
+        (
+            "live-enemy-standard-three.png",
+            EnemyLayout::Standard,
+            [Some(1_414), Some(1_344), Some(1_414), None, None, None],
+        ),
+        (
+            "live-default-highest-hp.png",
+            EnemyLayout::Standard,
+            [Some(56_453), Some(383_032), Some(45_484), None, None, None],
+        ),
+        (
+            "step4.png",
+            EnemyLayout::Six,
+            [
+                Some(704_487),
+                Some(735_728),
+                Some(351_884),
+                Some(353_590),
+                Some(355_298),
+                Some(3_152_503),
+            ],
+        ),
+    ] {
+        let state = inspect(&frame(file), RequiredBattleFacts::ENEMIES);
+        assert!(state.idle(), "{file}");
+        assert_eq!(state.enemy_layout, Some(layout), "{file}");
+        assert_eq!(
+            state.enemies.map(|enemy| enemy.map(|enemy| enemy.hp)),
+            expected,
+            "{file}"
+        );
+    }
+    // A visible charge marker without its HP must invalidate the entire layout
+    // so highest-HP targeting never chooses from a partially read set.
+    let mut missing_hp = frame("live-default-highest-hp.png");
+    for y in 40..65 {
+        for x in 350..472 {
+            missing_hp.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+        }
+    }
+    assert_eq!(
+        inspect(&missing_hp, RequiredBattleFacts::ENEMIES).enemy_layout,
+        None
+    );
+    // Suffix loss, a partial digit, and dim text remain unknown even if the
+    // recognizer can infer a plausible percentage from the remaining pixels.
+    for (x, width) in [(271, 24), (245, 5)] {
+        let mut damaged = frame("step10.png");
+        for y in 655..672 {
+            for x in x..x + width {
+                damaged.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        assert!(inspect(&damaged, RequiredBattleFacts::NP).np_percent[0].is_unknown());
+    }
+    let mut dim = frame("step10.png");
+    for pixel in dim.pixels_mut() {
+        for channel in &mut pixel.0[..3] {
+            *channel /= 3;
+        }
+    }
+    // Leave scene markers intact while dimming the NP text only.
+    let mut dim_np = frame("step10.png");
+    for y in 655..672 {
+        for x in 220..296 {
+            dim_np.put_pixel(x, y, *dim.get_pixel(x, y));
+        }
+    }
+    assert!(inspect(&dim_np, RequiredBattleFacts::NP).np_percent[0].is_unknown());
 }
 
 #[test]

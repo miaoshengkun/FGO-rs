@@ -1,19 +1,21 @@
 # GUI 使用
 
-桌面入口为 `fgo-rs-gui`，使用 Slint 软件渲染器，CLI 与 GUI 共用 Runner、识别和执行器。
+桌面入口为 `fgo-rs-gui`，使用 Slint 软件渲染器，CLI 与 GUI 共用 Runner、识别和执行器。GUI 固定使用 MaaFramework，构建时 `gui` 自动启用 `maa`；界面不再提供识别后端选择。
 
 ```sh
-# Rust 后端
+# MaaFramework GUI
 cargo run --locked --features gui --bin fgo-rs-gui
 
-# 同时启用 Maa
-cargo run --locked --features gui,maa --bin fgo-rs-gui -- --adb /path/to/adb
+# 指定 ADB
+cargo run --locked --features gui --bin fgo-rs-gui -- --adb /path/to/adb
 
 # 发布构建
-cargo build --locked --release --features gui,maa --bin fgo-rs-gui
+cargo build --locked --release --features gui --bin fgo-rs-gui
 ```
 
 本机开发 Bundle 可通过 `open .tools/FGO-rs-dev.app` 启动，其资源目录指向源码仓库；它不是可分发安装包。ADB 需单独提供，不在 PATH 时传入 `--adb` 或在路径设置中选择。
+
+开始任务前必须配置 MaaFramework `v5.14.2` 动态库和包含 `det.onnx`、`rec.onnx`、`keys.txt` 的 OCR 模型目录。开发版会自动填写仓库 SDK 与相邻 MaaFgo 模型路径；找不到时手动设置。库或模型缺失会显示具体错误并阻止开始任务，不切换到 Rust 后端。
 
 ## 固定位置刷图
 
@@ -37,7 +39,7 @@ cargo build --locked --release --features gui,maa --bin fgo-rs-gui
 
 ```sh
 cargo run --locked -- sync-data --profile profiles/saber-v1.json
-cargo run --locked --features gui,maa --bin fgo-rs-gui -- \
+cargo run --locked --features gui --bin fgo-rs-gui -- \
   --resources . --profile profiles/saber-v1.json --script scripts/saber_farm.rhai
 
 # 离线输入始终禁用

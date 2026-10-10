@@ -25,7 +25,7 @@ slint-build = { version = "=1.18.1", optional = true }
 
 [features]
 maa = ["dep:maa-framework", "dep:tempfile"]
-gui = ["dep:slint", "dep:slint-build"]
+gui = ["dep:slint", "dep:slint-build", "maa"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -267,6 +267,11 @@ impl<'a> FrameMatcher<'a> {
         self.frame
     }
 
+    #[cfg(feature = "maa")]
+    pub(crate) fn control(&self) -> &'a Control {
+        self.control
+    }
+
     pub(crate) fn find(&mut self, name: &str) -> Result<Option<Match>> {
         self.find_in(name, None)
     }
@@ -452,6 +457,11 @@ impl Vision {
     }
 
     #[cfg(feature = "maa")]
+    pub(crate) fn maa_ocr(&self) -> Option<&crate::maa::MaaRecognizer> {
+        self.maa.as_ref().filter(|maa| maa.has_ocr())
+    }
+
+    #[cfg(feature = "maa")]
     pub(crate) fn maa_card_color(
         &self,
         frame: &RgbaImage,
@@ -461,7 +471,7 @@ impl Vision {
         use crate::observation::{
             DetectorKind, RecognitionEvidence, RecognitionMethod, ScoreDirection,
         };
-        let Some(maa) = self.maa.as_ref().filter(|maa| maa.has_ocr()) else {
+        let Some(maa) = self.maa_ocr() else {
             return Ok(None);
         };
         let result = maa.recognize_node(frame, &format!("战斗_卡{}", index + 1), control)?;

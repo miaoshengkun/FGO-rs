@@ -38,8 +38,6 @@ export component AppWindow inherits Window {
     in-out property <int> apple-index;
     in-out property <int> max-seconds: 600;
     in-out property <int> mode-index;
-    in property <[string]> backends;
-    in-out property <int> backend-index;
     in-out property <string> maa-library;
     in-out property <string> maa-ocr;
     in-out property <string> data-dir;
@@ -147,13 +145,12 @@ export component AppWindow inherits Window {
                             Picker { model: ["金苹果", "银苹果", "铜苹果"]; current-index <=> root.apple-index; enabled: !root.running; }
                             Label { text: "最长运行时长（秒，含暂停）"; }
                             Stepper { minimum: 1; maximum: 86400; step-size: 60; value <=> root.max-seconds; enabled: !root.running; }
-                            Label { text: "识别后端"; }
-                            Picker { model: root.backends; current-index <=> root.backend-index; enabled: !root.running; }
-                            if root.backend-index == 1: VerticalLayout {
+                            Label { text: "识别引擎 · MaaFramework"; }
+                            VerticalLayout {
                                 spacing: 7px;
                                 Label { text: "MaaFramework v5.14.2 动态库"; }
                                 Field { text <=> root.maa-library; enabled: !root.running; }
-                                Label { text: "OCR 模型目录（可选）"; }
+                                Label { text: "OCR 模型目录"; }
                                 Field { text <=> root.maa-ocr; enabled: !root.running; }
                             }
                             advanced := CheckBox { text: "路径设置"; }
