@@ -489,7 +489,7 @@ impl Host {
             .farm
             .fixed
             .context("fixed-position farming is not configured")?;
-        self.log(&format!("Fixed-position farming: quest ({}, {}), team {}, first support; automatic servant skills, default NP/card strategy", config.quest.x, config.quest.y, config.team))?;
+        self.log(&format!("Fixed-position farming: quest ({}, {}), team {}, first support; automatic servant skills, highest-HP targeting, default NP/card strategy", config.quest.x, config.quest.y, config.team))?;
         while self.farming(|driver| driver.enter())? {
             // Repeat can skip the formation screen (and StartBattle command).
             if self.battle.reset() {

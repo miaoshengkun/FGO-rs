@@ -1045,6 +1045,40 @@ mod reflow_tests {
         );
         assert_eq!(state.selected_enemy, Some(EnemySlot::Two));
     }
+
+    #[test]
+    fn resumed_default_battle_reads_enemy_hp_target_and_np_together() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let vision = Vision::load(&root.join("assets/templates.json")).unwrap();
+        let raw = image::open(root.join("tests/fixtures/live-default-highest-hp.png"))
+            .unwrap()
+            .to_rgba8();
+        let frame = normalize(&raw, None).unwrap().0;
+        let state = vision
+            .battle_state_with_request(
+                &frame,
+                &Control::new(Duration::from_secs(10)),
+                &[],
+                BattleObservationRequest::new(
+                    RequiredBattleFacts::NP.union(RequiredBattleFacts::ENEMIES),
+                    &[Scene::BattleTurn],
+                ),
+            )
+            .unwrap();
+
+        assert!(state.idle());
+        assert!(state.markers.is_empty());
+        assert_eq!(state.enemy_layout, Some(EnemyLayout::Standard));
+        assert_eq!(state.selected_enemy, Some(EnemySlot::Three));
+        assert_eq!(
+            state.enemies.map(|enemy| enemy.map(|enemy| enemy.hp)),
+            [Some(56_453), Some(383_032), Some(45_484), None, None, None]
+        );
+        assert_eq!(
+            state.np_percent.map(|np| np.value()),
+            [Some(39), Some(74), Some(137)]
+        );
+    }
 }
 
 #[cfg(test)]

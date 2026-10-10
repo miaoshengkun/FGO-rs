@@ -3,12 +3,12 @@ use image::RgbaImage;
 
 const HEIGHT: usize = 13;
 
-struct Glyph {
+struct Glyph<const N: usize> {
     value: u8,
-    rows: [&'static str; HEIGHT],
+    rows: [&'static str; N],
 }
 
-const GLYPHS: [Glyph; 10] = [
+const GLYPHS: [Glyph<HEIGHT>; 10] = [
     Glyph {
         value: 0,
         rows: [
@@ -172,7 +172,7 @@ const GLYPHS: [Glyph; 10] = [
 // Native 1280x720 captures rasterize a few digits differently from screenshots
 // downscaled from 1920x1080. Keep those variants explicit instead of relaxing
 // the foreground threshold for every UI element.
-const NATIVE_GLYPHS: [Glyph; 3] = [
+const NATIVE_GLYPHS: [Glyph<HEIGHT>; 3] = [
     Glyph {
         value: 5,
         rows: [
@@ -214,6 +214,229 @@ const NATIVE_GLYPHS: [Glyph; 3] = [
             ".......##.",
             ".##..###..",
             "..#####...",
+        ],
+    },
+];
+
+// Standard-layout HP uses a 16-pixel font. Keep its alphabet at the actual
+// height: downsampling to the six-enemy font can confuse 3 with 2 or 8.
+// These rasterizations cover 0-9 without loosening recognition thresholds.
+const LARGE_GLYPHS: [Glyph<16>; 11] = [
+    Glyph {
+        value: 0,
+        rows: [
+            "...#####...",
+            "..###.###..",
+            ".##....###.",
+            "###.....###",
+            "##......###",
+            "##.......##",
+            "##.......##",
+            "##.......##",
+            "##.......##",
+            "##.......##",
+            "##.......##",
+            "##......###",
+            "###.....###",
+            ".##.....##.",
+            ".####.###..",
+            "...#####...",
+        ],
+    },
+    Glyph {
+        value: 1,
+        rows: [
+            ".....##", "....###", "...####", "..#####", "#######", ".....##", ".....##", ".....##",
+            ".....##", ".....##", ".....##", ".....##", ".....##", ".....##", ".....##", ".....##",
+        ],
+    },
+    Glyph {
+        value: 2,
+        rows: [
+            "...######..",
+            "..########.",
+            ".###....###",
+            ".##......##",
+            ".#.......##",
+            ".........##",
+            "........###",
+            ".......###.",
+            "......###..",
+            ".....###...",
+            "...####....",
+            "..###......",
+            ".###.......",
+            ".###.......",
+            "###########",
+            "###########",
+        ],
+    },
+    Glyph {
+        value: 3,
+        rows: [
+            "..######...",
+            ".########..",
+            "###....###.",
+            "##......##.",
+            "........##.",
+            ".......###.",
+            "......###..",
+            "...######..",
+            "....#####..",
+            ".......###.",
+            "........###",
+            "........###",
+            "........###",
+            "##.....####",
+            "##########.",
+            "..#######..",
+        ],
+    },
+    Glyph {
+        value: 4,
+        rows: [
+            ".......###..",
+            ".......###..",
+            "......####..",
+            ".....#####..",
+            "....######..",
+            "....##..##..",
+            "...##...##..",
+            "..##....##..",
+            ".##.....##..",
+            "###.....##..",
+            "###....###..",
+            "############",
+            ".......####.",
+            "........##..",
+            "........##..",
+            "........##..",
+        ],
+    },
+    Glyph {
+        value: 5,
+        rows: [
+            ".##########",
+            "##########.",
+            "###........",
+            "###........",
+            "###........",
+            "###........",
+            "########...",
+            "..########.",
+            "........###",
+            ".........##",
+            ".........##",
+            ".........##",
+            ".........##",
+            "##......###",
+            ".#########.",
+            "...######..",
+        ],
+    },
+    Glyph {
+        value: 6,
+        rows: [
+            "....#####...",
+            "..########..",
+            "..##.....##.",
+            ".##.......#.",
+            ".##.........",
+            "###.........",
+            "###.#####...",
+            "###########.",
+            "####....###.",
+            "###......###",
+            "###......###",
+            "###......###",
+            ".##......###",
+            ".###.....##.",
+            "..####.####.",
+            "...######...",
+        ],
+    },
+    Glyph {
+        value: 7,
+        rows: [
+            "###########",
+            ".##########",
+            "........###",
+            "........##.",
+            ".......###.",
+            ".......##..",
+            "......##...",
+            ".....###...",
+            ".....##....",
+            "....###....",
+            "....###....",
+            "....##.....",
+            "....##.....",
+            "...###.....",
+            "...##......",
+            "...##......",
+        ],
+    },
+    Glyph {
+        value: 8,
+        rows: [
+            "...######...",
+            ".####.####..",
+            "###.....###.",
+            "###......##.",
+            "###......##.",
+            "###.....###.",
+            ".####.####..",
+            "..#######...",
+            "..########..",
+            "####....###.",
+            "###......##.",
+            "##.......###",
+            "##.......###",
+            "###......##.",
+            ".###...####.",
+            "..#######...",
+        ],
+    },
+    Glyph {
+        value: 9,
+        rows: [
+            "...#####...",
+            ".####.####.",
+            "###.....##.",
+            "##.......##",
+            "##.......##",
+            "##.......##",
+            "##.......##",
+            "###.....###",
+            ".####.#####",
+            "..#########",
+            ".........##",
+            ".........##",
+            "........###",
+            "##.....###.",
+            ".#########.",
+            "..######...",
+        ],
+    },
+    Glyph {
+        value: 3,
+        rows: [
+            "...######...",
+            "..########..",
+            ".##.....###.",
+            ".##......##.",
+            ".........##.",
+            "........###.",
+            ".......###..",
+            "....#####...",
+            "....######..",
+            "........###.",
+            ".........##.",
+            ".........###",
+            ".........###",
+            "###.....###.",
+            ".##########.",
+            "...######...",
         ],
     },
 ];
@@ -358,28 +581,42 @@ fn classify(component: &Component) -> Option<u8> {
     }
     let mut scores = [(f64::INFINITY, 0u8); 10];
     for glyph in GLYPHS.iter().chain(NATIVE_GLYPHS.iter()) {
-        let target_width = glyph.rows[0].len();
-        let mut mismatches = 0;
-        for y in 0..HEIGHT {
-            for x in 0..target_width {
-                let source_x = x * width / target_width;
-                let source_y = y * height / HEIGHT;
-                let expected = glyph.rows[y].as_bytes()[x] == b'#';
-                mismatches += usize::from(source[source_y * width + source_x] != expected);
-            }
-        }
-        let pixel_score = mismatches as f64 / (target_width * HEIGHT) as f64;
-        let aspect_score = width.abs_diff(target_width) as f64 / target_width as f64;
-        let score = pixel_score + aspect_score * 0.15;
+        let score = glyph_score(&source, width, height, &glyph.rows);
         let entry = &mut scores[glyph.value as usize];
         if score < entry.0 {
             *entry = (score, glyph.value);
+        }
+    }
+    if height == 16 {
+        for glyph in &LARGE_GLYPHS {
+            let score = glyph_score(&source, width, height, &glyph.rows);
+            let entry = &mut scores[glyph.value as usize];
+            if score < entry.0 {
+                *entry = (score, glyph.value);
+            }
         }
     }
     let mut scores = scores.to_vec();
     scores.sort_by(|left, right| left.0.total_cmp(&right.0));
     let (best_score, value) = scores[0];
     (best_score <= 0.38 && scores[1].0 - best_score >= 0.015).then_some(value)
+}
+
+fn glyph_score(source: &[bool], width: usize, height: usize, rows: &[&str]) -> f64 {
+    let target_width = rows[0].len();
+    let target_height = rows.len();
+    let mut mismatches = 0;
+    for (y, row) in rows.iter().enumerate() {
+        for x in 0..target_width {
+            let source_x = x * width / target_width;
+            let source_y = y * height / target_height;
+            let expected = row.as_bytes()[x] == b'#';
+            mismatches += usize::from(source[source_y * width + source_x] != expected);
+        }
+    }
+    let pixel_score = mismatches as f64 / (target_width * target_height) as f64;
+    let aspect_score = width.abs_diff(target_width) as f64 / target_width as f64;
+    pixel_score + aspect_score * 0.15
 }
 
 #[cfg(test)]
@@ -511,6 +748,22 @@ mod tests {
         assert_eq!(
             read("live-enemy-standard-three.png"),
             [Some(1_414), Some(1_344), Some(1_414)]
+        );
+    }
+
+    #[test]
+    fn reads_resumed_default_battle_enemy_hp() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let raw = image::open(root.join("tests/fixtures/live-default-highest-hp.png"))
+            .unwrap()
+            .to_rgba8();
+        let frame = normalize(&raw, None).unwrap().0;
+        assert_eq!(
+            crate::layout::UI_LAYOUT_V1
+                .battle
+                .enemy_hp_standard
+                .map(|region| read_large_white_digits(&frame, region, 5)),
+            [Some(56_453), Some(383_032), Some(45_484)]
         );
     }
 }

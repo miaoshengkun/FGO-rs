@@ -124,7 +124,7 @@ export component AppWindow inherits Window {
                                 Button { text: root.picking-quest ? "取消点选" : "在截图上点选关卡"; enabled: root.has-preview && !root.running && !root.busy; clicked => { root.picking-quest = !root.picking-quest; } }
                                 Label { text: "编队序号 · 0 保持当前队伍"; }
                                 Stepper { minimum: 0; maximum: 15; value <=> root.team-index; enabled: !root.running && !root.busy; }
-                                Text { text: "默认关卡为列表第一项。编队从左至右编号。\n助战选当前列表首项；自动使用可用从者技能，\n单体友方目标默认本人，再使用宝具并选卡。\n御主技能和换人关闭；支持从战斗中开始。"; color: #77849b; font-size: 11px; wrap: word-wrap; }
+                                Text { text: "默认关卡为列表第一项。编队从左至右编号。\n助战选当前列表首项；自动使用可用从者技能。\n友方目标默认本人；攻击前选血量最高敌人。\n随后使用宝具并选卡，御主技能和换人关闭。\n支持从战斗中开始。"; color: #77849b; font-size: 11px; wrap: word-wrap; }
                             }
                             if root.task-index == 1: VerticalLayout {
                                 spacing: 7px;

@@ -1789,8 +1789,8 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         Ok(cast)
     }
 
-    /// Script-free battle: use ready servant skills, then NPs and the default
-    /// card ranking, without assuming any servant identity or order change.
+    /// Script-free battle: use ready servant skills, target the highest-HP
+    /// enemy, then use NPs and default cards without assuming servant identity.
     pub fn fight_default(&mut self) -> Result<()> {
         let mut turns = 0;
         while self.wait_next()? {
@@ -1835,19 +1835,22 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         probe: bool,
         profile: Option<&PartyProfile>,
     ) -> Result<bool> {
-        let enemy_target = profile.map_or(EnemyTargetStrategy::Current, |p| p.enemy_target);
+        let enemy_target = profile.map_or(EnemyTargetStrategy::HighestHp, |p| p.enemy_target);
         let battle_speed = profile.map_or(BattleSpeedPolicy::Double, |p| p.battle_speed);
         let default_cards = CardStrategyProfile::default();
         let card_strategy = profile.map_or(&default_cards, |p| &p.cards);
-        let facts = if enemy_target == EnemyTargetStrategy::HighestHp {
-            RequiredBattleFacts::MARKERS.union(RequiredBattleFacts::ENEMIES)
-        } else if profile.is_some() {
+        let facts = if profile.is_some() {
             RequiredBattleFacts::MARKERS
         } else {
             // An empty frontline slot can look bright on the card screen.
             // Generic battles must confirm actual NP before opening cards;
             // without a profile there is no known roster to exclude that slot.
             RequiredBattleFacts::NP
+        };
+        let facts = if enemy_target == EnemyTargetStrategy::HighestHp {
+            facts.union(RequiredBattleFacts::ENEMIES)
+        } else {
+            facts
         };
         let before = self.master_panel(false, facts)?;
         let mask = if profile.is_none() {
@@ -1999,19 +2002,80 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
                 UI_LAYOUT_V1.battle.noble_phantasms[card - 6]
             };
             self.port.tap(p)?;
-            self.port.sleep(if i == 2 { 1800 } else { 400 })?;
+            if i < 2 {
+                self.port.sleep(400)?;
+            }
         }
-        self.wait_with_stability(
-            "starting attack",
-            15000,
-            &[Scene::BattleAnimation],
-            RequiredBattleFacts::default(),
-            Some(Scene::CommandCards),
-            StabilityRule::consecutive(2, 150),
-            |s| !s.turn && !s.cards() && !s.order_change && s.target_count == 0,
-        )?;
+        self.wait_for_attack(before.wave)?;
         self.port.attack_committed()?;
         Ok(true)
+    }
+
+    fn wait_for_attack(&mut self, previous_wave: Option<BattleWave>) -> Result<()> {
+        let expected = [Scene::BattleAnimation, Scene::BattleTurn, Scene::Victory];
+        let mut animation = ActionVerificationContext::new(
+            "starting attack",
+            &expected,
+            self.port.verification_origin(),
+            Some(Scene::CommandCards),
+            self.port.elapsed_ms(),
+            15000,
+            StabilityRule::consecutive(2, 150),
+        )?;
+        // Keep animation and completed-turn stability independent: one unknown
+        // transition frame must not count as a stable next-turn observation.
+        let mut completed = animation.clone();
+        let mut animation_seen = false;
+        self.port
+            .verification(&animation, VerificationStatus::Started)?;
+        loop {
+            let state = self.observe(RequiredBattleFacts::WAVE, &expected)?;
+            let scene = state.scene();
+            let frame = self.port.current_frame_id();
+            let now = self.port.elapsed_ms();
+            let in_animation = scene == Scene::Unknown
+                && !state.turn
+                && !state.cards()
+                && !state.order_change
+                && state.target_count == 0;
+            if state.cards() || state.order_change || state.target_count > 0 {
+                animation_seen = false;
+            } else if in_animation {
+                animation_seen = true;
+            }
+            let advanced_wave = matches!((previous_wave, state.wave),
+                (Some(previous), Some(current))
+                    if current.total == previous.total && current.current > previous.current);
+            let completed_turn =
+                state.idle() && self.port.roster_ready() && (animation_seen || advanced_wave);
+            // Victory is already a confirmed terminal scene, as in wait_next;
+            // it does not require an animation or a second victory screenshot.
+            if state.victory {
+                completed.stability = StabilityRule::ONCE;
+            }
+            let animation_progress = animation.observe(frame, scene, in_animation, now);
+            let completed_progress =
+                completed.observe(frame, scene, state.victory || completed_turn, now);
+            if animation_progress == VerificationProgress::Succeeded {
+                self.port
+                    .verification(&animation, VerificationStatus::Succeeded)?;
+                return Ok(());
+            }
+            if completed_progress == VerificationProgress::Succeeded {
+                self.port.decision(&format!(
+                    "Attack already resolved before animation verification: {scene:?}"
+                ))?;
+                self.port
+                    .verification(&completed, VerificationStatus::Succeeded)?;
+                return Ok(());
+            }
+            if animation_progress == VerificationProgress::TimedOut {
+                self.port
+                    .verification(&animation, VerificationStatus::TimedOut)?;
+                bail!("timed out: starting attack");
+            }
+            self.port.sleep(150)?;
+        }
     }
 
     fn apply_enemy_target(

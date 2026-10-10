@@ -1,17 +1,18 @@
 use anyhow::Result;
 use fgo_rs::{
     battle::{
-        BattleDriver, BattleObservationRequest, BattlePort, BattleState, CardGroup, Color,
-        EnemyCharge, EnemyLayout, EnemyState, RequiredBattleFacts, SkillState, rank_cards,
+        BattleDriver, BattleObservationRequest, BattlePort, BattleState, BattleWave, CardGroup,
+        Color, EnemyCharge, EnemyLayout, EnemyState, RequiredBattleFacts, SkillState, rank_cards,
         rank_cards_for_party, rank_cards_with_party_data,
     },
-    domain::{Command, EnemySlot, FieldSlot, PartySlot, Scene, SkillSlot},
+    domain::{Command, EnemySlot, FieldSlot, PartySlot, Scene, SkillSlot, VerificationStatus},
     executor::Executor,
     observation::{Recognition, UnknownReason},
     profile::{
         CardStrategyProfile, EnemyTargetStrategy, FaceCardPriority, NpBelowCondition,
         OrderChangeProfile, PartyProfile, SkillRuleConditionAlternative,
     },
+    verification::ActionVerificationContext,
     vision::Point,
 };
 use std::collections::{BTreeMap, VecDeque};
@@ -32,6 +33,8 @@ struct Port {
     progress: Option<fgo_rs::battle::BattleProgress>,
     frontline: Option<[Option<PartySlot>; 3]>,
     atlas_np_colors: BTreeMap<u32, Color>,
+    attack_commits: usize,
+    verifications: Vec<(ActionVerificationContext, VerificationStatus)>,
 }
 impl Port {
     fn new(frames: Vec<BattleState>) -> Self {
@@ -83,6 +86,14 @@ impl Executor for Port {
         self.commands.push(command);
         Ok(())
     }
+    fn verification(
+        &mut self,
+        context: &ActionVerificationContext,
+        status: VerificationStatus,
+    ) -> Result<()> {
+        self.verifications.push((context.clone(), status));
+        Ok(())
+    }
 }
 impl BattlePort for Port {
     fn observe(&mut self) -> Result<BattleState> {
@@ -119,6 +130,10 @@ impl BattlePort for Port {
     fn atlas_noble_phantasm_color(&self, atlas_id: u32) -> Option<Color> {
         self.atlas_np_colors.get(&atlas_id).copied()
     }
+    fn attack_committed(&mut self) -> Result<()> {
+        self.attack_commits += 1;
+        Ok(())
+    }
 }
 fn idle() -> BattleState {
     BattleState {
@@ -154,14 +169,31 @@ fn marked(mut state: BattleState, markers: &[&str]) -> BattleState {
     state
 }
 
+fn standard_enemies(mut state: BattleState, hp: [u32; 3], selected: EnemySlot) -> BattleState {
+    state.enemy_layout = Some(EnemyLayout::Standard);
+    for (index, hp) in hp.into_iter().enumerate() {
+        state.enemies[index] = Some(EnemyState {
+            slot: EnemySlot::try_from(index + 1).unwrap(),
+            hp,
+            charge: None,
+        });
+    }
+    state.selected_enemy = Some(selected);
+    state
+}
+
 #[test]
 fn default_battle_casts_current_frontline_skills_before_nps_and_cards_without_profile_markers() {
-    let mut turn = BattleState {
-        turn: true,
-        skills: [[SkillState::Cooldown.into(); 3]; 3],
-        np_percent: [0.into(), 100.into(), 0.into()],
-        ..Default::default()
-    };
+    let mut turn = standard_enemies(
+        BattleState {
+            turn: true,
+            skills: [[SkillState::Cooldown.into(); 3]; 3],
+            np_percent: [0.into(), 100.into(), 0.into()],
+            ..Default::default()
+        },
+        [56_453, 383_032, 45_484],
+        EnemySlot::Three,
+    );
     turn.skills[0][0] = SkillState::Available.into();
     let mut cooling = turn.clone();
     cooling.skills[0][0] = SkillState::Cooldown.into();
@@ -170,7 +202,9 @@ fn default_battle_casts_current_frontline_skills_before_nps_and_cards_without_pr
         ..cards()
     };
     let mut frames = vec![turn.clone(), turn, cooling.clone()];
-    frames.extend(vec![cooling; 9]);
+    frames.extend(vec![cooling.clone(); 9]);
+    cooling.selected_enemy = Some(EnemySlot::Two);
+    frames.push(cooling);
     frames.extend([
         cards.clone(),
         cards,
@@ -182,8 +216,8 @@ fn default_battle_casts_current_frontline_skills_before_nps_and_cards_without_pr
         },
     ]);
     let mut port = Port::new(frames);
-    // A configured Rider strategy must not leak into this independent mode.
-    port.profile.enemy_target = EnemyTargetStrategy::HighestHp;
+    // Generic targeting is independent of the configured profile's policy.
+    port.profile.enemy_target = EnemyTargetStrategy::Current;
     port.driver().fight_default().unwrap();
     assert_eq!(
         port.commands,
@@ -196,25 +230,36 @@ fn default_battle_casts_current_frontline_skills_before_nps_and_cards_without_pr
                 },
                 strict: false,
             },
+            Command::SelectEnemy {
+                slot: EnemySlot::Two
+            },
             Command::Attack { opening: false },
             Command::SelectCards,
         ]
     );
-    assert_eq!(port.taps.len(), 5);
+    assert_eq!(port.taps.len(), 6);
     assert_eq!(
         port.taps[0],
         fgo_rs::layout::UI_LAYOUT_V1.battle.servant_skills[0][0]
     );
-    assert_eq!(port.taps[1], fgo_rs::layout::UI_LAYOUT_V1.battle.attack);
     assert_eq!(
-        port.taps[2],
+        port.taps[1],
+        fgo_rs::layout::UI_LAYOUT_V1.battle.enemy_targets_standard[1]
+    );
+    assert_eq!(port.taps[2], fgo_rs::layout::UI_LAYOUT_V1.battle.attack);
+    assert_eq!(
+        port.taps[3],
         fgo_rs::layout::UI_LAYOUT_V1.battle.noble_phantasms[1]
     );
     assert!(
         port.requested_facts
             .iter()
-            .all(|facts| !facts.contains(RequiredBattleFacts::MARKERS)
-                && !facts.contains(RequiredBattleFacts::ENEMIES))
+            .all(|facts| !facts.contains(RequiredBattleFacts::MARKERS))
+    );
+    assert!(
+        port.requested_facts.iter().any(
+            |facts| facts.contains(RequiredBattleFacts::NP.union(RequiredBattleFacts::ENEMIES))
+        )
     );
     assert!(
         port.requested_facts
@@ -225,18 +270,22 @@ fn default_battle_casts_current_frontline_skills_before_nps_and_cards_without_pr
 
 #[test]
 fn default_battle_ignores_bright_np_slots_without_confirmed_charge() {
-    let turn = BattleState {
-        turn: true,
-        skills: [[SkillState::Cooldown.into(); 3]; 3],
-        // Two surviving servants and one empty slot. NP glow alone must not
-        // turn any of these into a ready NP, even with stale party identities.
-        np_percent: [
-            85.into(),
-            19.into(),
-            Recognition::unknown(UnknownReason::NoCandidate, None),
-        ],
-        ..Default::default()
-    };
+    let turn = standard_enemies(
+        BattleState {
+            turn: true,
+            skills: [[SkillState::Cooldown.into(); 3]; 3],
+            // Two surviving servants and one empty slot. NP glow alone must not
+            // turn any of these into a ready NP, even with stale party identities.
+            np_percent: [
+                85.into(),
+                19.into(),
+                Recognition::unknown(UnknownReason::NoCandidate, None),
+            ],
+            ..Default::default()
+        },
+        [100, 300, 200],
+        EnemySlot::Two,
+    );
     let mut frames = vec![turn; 11];
     frames.extend([
         cards(),
@@ -266,6 +315,97 @@ fn default_battle_ignores_bright_np_slots_without_confirmed_charge() {
             .iter()
             .any(|facts| facts.contains(RequiredBattleFacts::NP))
     );
+}
+
+#[test]
+fn default_battle_reselects_highest_hp_after_each_turn() {
+    let turn = BattleState {
+        turn: true,
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        np_percent: [0.into(); 3],
+        ..Default::default()
+    };
+    let first = standard_enemies(turn.clone(), [100, 500, 50], EnemySlot::Three);
+    let second = standard_enemies(turn, [100, 80, 50], EnemySlot::Two);
+    let mut frames = Vec::new();
+    for (before, target) in [(first, EnemySlot::Two), (second, EnemySlot::One)] {
+        // wait_next, nine skill observations, then the attack precondition.
+        frames.extend(vec![before.clone(); 11]);
+        let mut selected = before;
+        selected.selected_enemy = Some(target);
+        frames.extend([
+            selected,
+            cards(),
+            cards(),
+            BattleState::default(),
+            BattleState::default(),
+        ]);
+    }
+    frames.push(BattleState {
+        victory: true,
+        ..Default::default()
+    });
+    let mut port = Port::new(frames);
+    port.frontline = Some([None; 3]);
+
+    port.driver().fight_default().unwrap();
+
+    assert_eq!(
+        port.commands,
+        [
+            Command::SelectEnemy {
+                slot: EnemySlot::Two
+            },
+            Command::Attack { opening: false },
+            Command::SelectCards,
+            Command::SelectEnemy {
+                slot: EnemySlot::One
+            },
+            Command::Attack { opening: false },
+            Command::SelectCards,
+        ]
+    );
+    assert_eq!(
+        port.taps[0],
+        fgo_rs::layout::UI_LAYOUT_V1.battle.enemy_targets_standard[1]
+    );
+    assert_eq!(
+        port.taps[5],
+        fgo_rs::layout::UI_LAYOUT_V1.battle.enemy_targets_standard[0]
+    );
+    assert_eq!(port.attack_commits, 2);
+    assert!(port.frames.is_empty());
+}
+
+#[test]
+fn default_battle_stops_before_attack_for_unknown_or_unconfirmed_enemy_target() {
+    let turn = BattleState {
+        turn: true,
+        skills: [[SkillState::Cooldown.into(); 3]; 3],
+        ..Default::default()
+    };
+    let mut unknown_target = standard_enemies(turn.clone(), [100, 500, 50], EnemySlot::Three);
+    unknown_target.selected_enemy = None;
+    for before in [turn.clone(), unknown_target] {
+        let mut port = Port::new(vec![before; 11]);
+        assert!(port.driver().fight_default().is_err());
+        assert!(port.commands.is_empty());
+        assert!(port.taps.is_empty());
+    }
+    let before = standard_enemies(turn, [100, 500, 50], EnemySlot::Three);
+    let mut port = Port::new(vec![before; 11]);
+    assert!(port.driver().fight_default().is_err());
+    assert_eq!(
+        port.commands,
+        [Command::SelectEnemy {
+            slot: EnemySlot::Two
+        }]
+    );
+    assert_eq!(
+        port.taps,
+        [fgo_rs::layout::UI_LAYOUT_V1.battle.enemy_targets_standard[1]]
+    );
+    assert_eq!(port.attack_commits, 0);
 }
 
 #[test]
@@ -431,10 +571,14 @@ fn default_battle_keeps_unknown_card_and_defeat_stops() {
     let mut incomplete = cards();
     incomplete.colors[0] = None;
     let mut frames = vec![
-        BattleState {
-            turn: true,
-            ..Default::default()
-        };
+        standard_enemies(
+            BattleState {
+                turn: true,
+                ..Default::default()
+            },
+            [100, 300, 200],
+            EnemySlot::Two
+        );
         11
     ];
     frames.push(incomplete);
@@ -733,6 +877,132 @@ fn master_panel_retries_dropped_click_and_checks_cooldown() {
 }
 
 #[test]
+fn attack_accepts_a_stable_completed_turn_when_animation_sampling_is_missed() {
+    let before = BattleState {
+        wave: Some(BattleWave::new(2, 3).unwrap()),
+        ..idle()
+    };
+    let next_wave = BattleState {
+        wave: Some(BattleWave::new(3, 3).unwrap()),
+        first_turn: false,
+        ..idle()
+    };
+    let next_turn = BattleState {
+        first_turn: false,
+        ..before.clone()
+    };
+    for transition in [
+        vec![next_wave.clone(), next_wave.clone()],
+        vec![BattleState::default(), next_wave.clone(), next_wave],
+        vec![BattleState::default(), next_turn.clone(), next_turn],
+    ] {
+        let count = transition.len();
+        let mut frames = vec![before.clone(), cards(), cards()];
+        frames.extend(transition);
+        let mut port = Port::new(frames);
+        port.driver().attack(false).unwrap();
+        assert_eq!(port.frame_id, (3 + count) as u64);
+        assert_eq!(port.attack_commits, 1);
+        assert_eq!(port.taps.len(), 4, "verification must never repeat input");
+        let (verification, status) = port.verifications.last().unwrap();
+        assert_eq!(*status, VerificationStatus::Succeeded);
+        assert_eq!(
+            verification.current_observation.unwrap().scene,
+            Scene::BattleTurn
+        );
+        assert_eq!(verification.stability.required_consecutive, 2);
+    }
+}
+
+#[test]
+fn attack_accepts_victory_even_without_two_animation_frames() {
+    for animation in [false, true] {
+        let mut frames = vec![idle(), cards(), cards()];
+        if animation {
+            frames.push(BattleState::default());
+        }
+        frames.push(BattleState {
+            victory: true,
+            ..Default::default()
+        });
+        let mut port = Port::new(frames);
+        port.driver().attack(false).unwrap();
+        assert_eq!(port.frame_id, if animation { 5 } else { 4 });
+        assert_eq!(port.attack_commits, 1);
+        assert_eq!(port.taps.len(), 4);
+        let (verification, status) = port.verifications.last().unwrap();
+        assert_eq!(*status, VerificationStatus::Succeeded);
+        assert_eq!(
+            verification.current_observation.unwrap().scene,
+            Scene::Victory
+        );
+    }
+}
+
+#[test]
+fn attack_rejects_dropped_cards_and_unconfirmed_turn_progress_without_repeating_input() {
+    let before = BattleState {
+        wave: Some(BattleWave::new(2, 3).unwrap()),
+        ..idle()
+    };
+    let wrong_total = BattleState {
+        wave: Some(BattleWave::new(3, 4).unwrap()),
+        ..idle()
+    };
+    let earlier_wave = BattleState {
+        wave: Some(BattleWave::new(1, 3).unwrap()),
+        ..idle()
+    };
+    let next_wave = BattleState {
+        wave: Some(BattleWave::new(3, 3).unwrap()),
+        ..idle()
+    };
+    for transition in [
+        vec![cards()],
+        vec![before.clone()],
+        vec![BattleState::default(), cards(), before.clone()],
+        vec![wrong_total],
+        vec![earlier_wave],
+        vec![next_wave, before.clone()],
+    ] {
+        let mut frames = vec![before.clone(), cards(), cards()];
+        frames.extend(transition);
+        let mut port = Port::new(frames);
+        let error = port.driver().attack(false).unwrap_err().to_string();
+        assert!(error.contains("timed out: starting attack"), "{error}");
+        assert_eq!(port.attack_commits, 0);
+        assert_eq!(port.taps.len(), 4);
+        assert_eq!(
+            port.commands
+                .iter()
+                .filter(|c| **c == Command::SelectCards)
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn attack_still_stops_on_defeat_or_an_unexpected_dialog() {
+    for state in [
+        BattleState {
+            defeated: true,
+            ..Default::default()
+        },
+        BattleState {
+            skill_error: true,
+            ..Default::default()
+        },
+        skill_confirmation(),
+    ] {
+        let mut port = Port::new(vec![idle(), cards(), cards(), state]);
+        assert!(port.driver().attack(false).is_err());
+        assert_eq!(port.attack_commits, 0);
+        assert_eq!(port.taps.len(), 4);
+    }
+}
+
+#[test]
 fn opening_chooses_exactly_three_nps_in_field_order() {
     let mut port = Port::new(vec![idle(), cards(), cards(), BattleState::default()]);
     port.driver().attack(true).unwrap();
@@ -751,8 +1021,8 @@ fn opening_chooses_exactly_three_nps_in_field_order() {
             RequiredBattleFacts::MARKERS,
             RequiredBattleFacts::CARDS.union(RequiredBattleFacts::SPEED),
             RequiredBattleFacts::CARDS.union(RequiredBattleFacts::SPEED),
-            RequiredBattleFacts::default(),
-            RequiredBattleFacts::default(),
+            RequiredBattleFacts::WAVE,
+            RequiredBattleFacts::WAVE,
         ]
     );
     assert_eq!(
@@ -761,8 +1031,8 @@ fn opening_chooses_exactly_three_nps_in_field_order() {
             vec![Scene::BattleTurn],
             vec![Scene::CommandCards],
             vec![Scene::CommandCards],
-            vec![Scene::BattleAnimation],
-            vec![Scene::BattleAnimation],
+            vec![Scene::BattleAnimation, Scene::BattleTurn, Scene::Victory],
+            vec![Scene::BattleAnimation, Scene::BattleTurn, Scene::Victory],
         ]
     );
 }
