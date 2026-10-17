@@ -125,7 +125,8 @@ enum Commands {
         data_dir: PathBuf,
         #[arg(long, value_parser = parse_rect)]
         viewport: Option<Rect>,
-        #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u64).range(1..=86400))]
+        /// Overall runtime in seconds, including pauses; 0 disables the deadline.
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u64).range(0..=86400))]
         max_seconds: u64,
         #[arg(long, default_value_t = 1_000_000, value_parser = clap::value_parser!(u64).range(1..))]
         max_operations: u64,
@@ -176,9 +177,9 @@ fn main() -> Result<()> {
         }
     );
     let control = if replaying {
-        Control::simulated(Duration::from_secs(max_seconds))
+        Control::simulated(runner::execution_limit(max_seconds))
     } else {
-        Control::new(Duration::from_secs(max_seconds))
+        Control::new(runner::execution_limit(max_seconds))
     };
     let stop = control.clone();
     ctrlc::set_handler(move || stop.stop()).context("install Ctrl-C handler")?;
@@ -396,6 +397,29 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_defaults_to_unlimited_and_accepts_explicit_time_budgets() {
+        for (extra, expected) in [
+            (vec![], 0),
+            (vec!["--max-seconds", "0"], 0),
+            (vec!["--max-seconds", "1800"], 1800),
+        ] {
+            let mut args = vec![
+                "fgo-rs",
+                "run",
+                "scripts/assassin_farm.rhai",
+                "--serial",
+                "test",
+            ];
+            args.extend(extra);
+            let cli = Cli::try_parse_from(args).unwrap();
+            let Commands::Run { max_seconds, .. } = cli.command else {
+                panic!("expected run")
+            };
+            assert_eq!(max_seconds, expected);
+        }
+    }
 
     #[test]
     fn sync_data_defaults_to_cn() {

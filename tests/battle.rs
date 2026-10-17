@@ -1052,6 +1052,93 @@ fn selected_np_does_not_require_or_select_other_nps() {
 }
 
 #[test]
+fn selected_two_nps_are_required_and_ordered_without_selecting_the_third() {
+    for blocked in [false, true] {
+        let mut screen = cards();
+        screen.np_glow = [true; 3];
+        screen.np_blocked[1] = blocked;
+        let mut port = Port::new(vec![idle(), screen.clone(), screen, BattleState::default()]);
+        port.profile.cards.noble_phantasm_order = Some([
+            PartySlot::Three,
+            PartySlot::Two,
+            PartySlot::One,
+            PartySlot::Four,
+            PartySlot::Five,
+            PartySlot::Six,
+        ]);
+        let result = port.driver().attack_nps(&[3, 2], true);
+        if blocked {
+            assert!(result.is_err());
+            assert!(!port.commands.contains(&Command::SelectCards));
+            assert_eq!(port.attack_commits, 0);
+        } else {
+            result.unwrap();
+            assert_eq!(
+                &port.taps[1..3],
+                [Point { x: 845, y: 203 }, Point { x: 651, y: 203 }]
+            );
+            assert!(!port.taps.contains(&Point { x: 431, y: 203 }));
+            assert_eq!(port.attack_commits, 1);
+        }
+    }
+    for slots in [vec![], vec![0], vec![4], vec![2, 2], vec![1, 2, 3, 1]] {
+        let mut port = Port::new(vec![idle()]);
+        assert!(port.driver().attack_nps(&slots, true).is_err());
+        assert!(port.taps.is_empty());
+    }
+}
+
+#[test]
+fn strict_support_color_order_survives_critical_resistance_and_chain_scores() {
+    let mut screen = cards();
+    screen.colors = [
+        Color::Quick,
+        Color::Buster,
+        Color::Arts,
+        Color::Buster,
+        Color::Quick,
+    ]
+    .map(Some);
+    screen.support_cards = [true, false, true, true, false];
+    screen.resist = [2.0, 2.0, 1.0, 0.5, 1.0];
+    let strategy = CardStrategyProfile {
+        face_card_color_order: Some([Color::Buster, Color::Arts, Color::Quick]),
+        noble_phantasm_order: Some([
+            PartySlot::Three,
+            PartySlot::Two,
+            PartySlot::One,
+            PartySlot::Four,
+            PartySlot::Five,
+            PartySlot::Six,
+        ]),
+        ..Default::default()
+    };
+    let frontline = [
+        Some(PartySlot::One),
+        Some(PartySlot::Two),
+        Some(PartySlot::Three),
+    ];
+    assert_eq!(
+        rank_cards_for_party(&screen, [false, true, true], frontline, &strategy).unwrap(),
+        [8, 7, 4]
+    );
+    assert_eq!(
+        rank_cards_for_party(&screen, [false; 3], frontline, &strategy).unwrap(),
+        [4, 3, 1]
+    );
+    screen.sealed[3] = true;
+    assert_eq!(
+        rank_cards_for_party(&screen, [false, true, true], frontline, &strategy).unwrap(),
+        [8, 7, 3]
+    );
+    screen.support_cards = [false; 5];
+    assert_eq!(
+        rank_cards_for_party(&screen, [false, true, true], frontline, &strategy).unwrap(),
+        [8, 7, 2]
+    );
+}
+
+#[test]
 fn unavailable_np_returns_to_skills_without_committing_attack() {
     for required in [false, true] {
         let mut screen = cards();

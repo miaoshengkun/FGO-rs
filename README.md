@@ -1,8 +1,8 @@
 # FGO-rs
 
-Rust 核心 + Rhai 策略的 FGO 自动化项目，提供 Windows / macOS CLI 与可选 Slint GUI。当前适配 CN 界面，支持骑阶、剑阶冠位战 VII 专用策略及 GUI 固定位置刷图。
+Rust 核心 + Rhai 策略的 FGO 自动化项目，提供 Windows / macOS CLI 与可选 Slint GUI。当前适配 CN 界面，支持骑阶、剑阶、暗匿者冠位战 VII 专用策略及 GUI 固定位置刷图。
 
-剑阶冠位战 VII 已加入策略、Profile 和实机识别模板；流程及验收说明见 [剑阶 VII](docs/saber-vii.md)。
+剑阶冠位战 VII 已加入策略、Profile 和实机识别模板；流程及验收说明见 [剑阶 VII](docs/saber-vii.md)。GUI 另提供「冠位钻研战[暗匿者]VII」专用任务，阵容及策略见 [暗匿者 VII](docs/assassin-vii.md)。
 
 ## 当前功能
 
@@ -51,7 +51,7 @@ cargo build --locked --release --features gui --bin fgo-rs-gui
 
 固定模式不需要 Profile、Rhai 脚本或 Atlas 数据。默认战斗参考 MaaFgo 的无计划策略：每回合按当前前排 1–3 位、各技能 1–3 的顺序，重新识别并施放可用从者技能；冷却、封印和未知技能分别跳过，未知会写入日志。需要选择友方目标时默认选择施法者本人；完整识别本次施放后的技能确认弹窗才确认一次，并等待技能进入冷却。每回合攻击前选择当前血量最高的敌人并确认目标；已选中时不重复点击，血量布局或当前目标不完整时停止。随后自动使用可用宝具：攻击前必须确认该槽位 NP 为 100–300%，再结合选卡页的可用/封印状态，避免把退场后的空位亮度当作宝具；NP 未知或不足时使用普通卡。剩余指令卡沿用现有默认评分与连携策略；御主技能和换人关闭，选卡前沿用默认倍速确认。这个通用策略不识别技能效果，不具备 FGO-py 基于从者数据的充能、治疗和增伤时机/目标决策。支持从关卡列表、助战、编队、连续出击提示或战斗回合开始；结算后按场次与苹果预算继续。未知场景、卡色、无法确认编队、特殊技能弹窗或施放后无法确认冷却时保留核心的停止行为。可切换“Profile / Rhai 脚本”使用原有冠位战策略；显式传入 `--script` / `--profile` 时默认进入脚本模式。
 
-空闲时自动预览所选设备；开始后停止独立预览，改为显示运行核心的归一化截图。暂停时间计入最长运行时长，停止和关闭窗口都会取消后台任务。日志区保留最新 300 条，完整 JSONL、逐帧截图及失败截图写入独立运行目录。
+空闲时自动预览所选设备；开始后停止独立预览，改为显示运行核心的归一化截图。GUI 总运行时限默认 0（不限），按场次及苹果预算停止。可手动设置非零秒数作为硬时限，暂停时间也计入；到时立即停止并显示“已停止 · 达到时限”。专用脚本中断后需确认续接位置，不能直接重复开场技能。停止和关闭窗口都会取消后台任务。日志区保留最新 300 条，完整 JSONL、逐帧截图及失败截图写入独立运行目录。
 
 资源目录包含 `assets/`、`profiles/` 和 `scripts/`。程序依次检查可执行文件旁的 `resources/`、macOS Bundle 的 `Contents/Resources/` 和当前目录；开发构建还可回退到源码目录。在其他目录启动时可显式传入 `--resources /path/to/FGO-rs`。`--profile`、`--script` 可加入外部文件并默认选中，`--output` 可指定可写日志目录。默认输出位于 macOS 的 `~/Library/Application Support/FGO-rs/logs`、Windows 的 `%LOCALAPPDATA%\FGO-rs\logs`。Atlas 数据仍通过 CLI 的 `sync-data --profile ...` 预先同步，界面“路径设置”可指定对应 `data/atlas` 根目录。
 
@@ -234,7 +234,7 @@ Rhai 调用 `cast_profile_master_skills()` 返回成功施放数；缺少规则�
 单独执行战斗用 `scripts/rider_battle.rhai`，到结果页结束。单独选助战用 `scripts/select_rider_support.rhai`，确认编队后结束；游戏的连续出击模式可能在选完助战后直接进入战斗。
 
 没有 `--execute` 时输入只写日志，依赖画面变化的流程可能超时。`--replay` 与 `--execute` 互斥。
-执行期间输入 `pause`、`resume`、`stop` 后回车，或按 Ctrl-C。总时限包含暂停时间，已发出的设备输入不能撤销。
+执行期间输入 `pause`、`resume`、`stop` 后回车，或按 Ctrl-C。CLI 的 `--max-seconds` 默认 0（不限）；非零总时限包含暂停时间。单个动作的验证超时仍生效，已发出的设备输入不能撤销。
 
 ## 日志与回放
 

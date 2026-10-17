@@ -2,7 +2,7 @@ use anyhow::Result;
 use fgo_rs::{
     adb::parse_devices,
     battle::BattleState,
-    control::Control,
+    control::{Control, ControlError},
     device::{FrameSource, InputSink, ReplayDevice},
     domain::Scene,
     farming::{Apple, FarmState},
@@ -390,8 +390,50 @@ fn stop_interrupts_host_sleep() {
     std::thread::sleep(Duration::from_millis(60));
     let begin = Instant::now();
     c.stop();
-    assert!(worker.join().unwrap().is_err());
+    let error = worker.join().unwrap().unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<ControlError>(),
+        Some(&ControlError::Stopped)
+    );
     assert!(begin.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+fn script_time_limit_remains_typed_and_cannot_be_caught_to_continue_inputs() {
+    for source in [
+        "sleep(100); capture(); tap(640,360);",
+        "fn wait() { sleep(100); } wait(); capture(); tap(640,360);",
+        "try { sleep(100); } catch (error) { fail(\"must not reach catch\"); }",
+    ] {
+        let c = Control::simulated(Duration::from_millis(100));
+        let (rt, taps, trace) = runtime(true, c, 100000);
+        let error = rt.run(source).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<ControlError>(),
+            Some(&ControlError::TimeLimitReached),
+            "{source}: {error:#}"
+        );
+        assert_eq!(taps.load(Ordering::SeqCst), 0);
+        let records: Vec<serde_json::Value> = String::from_utf8(trace.0.lock().unwrap().clone())
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["action"], "log");
+        assert_eq!(records[0]["message"], "execution time limit reached");
+    }
+}
+
+#[test]
+fn script_loop_time_limit_remains_typed_without_a_host_call() {
+    let (rt, taps, _) = runtime(true, Control::new(Duration::ZERO), 100000);
+    let error = rt.run("loop {}").unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<ControlError>(),
+        Some(&ControlError::TimeLimitReached)
+    );
+    assert_eq!(taps.load(Ordering::SeqCst), 0);
 }
 
 #[test]

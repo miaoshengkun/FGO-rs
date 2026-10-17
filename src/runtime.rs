@@ -3,7 +3,7 @@ use crate::{
         BattleDriver, BattleObservationRequest, BattleOutcome, BattlePort, BattleProgress,
         BattleState, BattleTracker, Color, RequiredBattleFacts,
     },
-    control::Control,
+    control::{Control, ControlError},
     device::{Device, FrameSource, InputSink, SplitDevice},
     domain::{Command, Scene, VerificationStatus},
     executor::Executor,
@@ -41,6 +41,10 @@ struct FunctionSignature {
 }
 
 const HOST_API: &[FunctionSignature] = &[
+    FunctionSignature {
+        name: "attack_nps",
+        arity: 2,
+    },
     FunctionSignature {
         name: "attack_other_nps",
         arity: 0,
@@ -764,7 +768,28 @@ impl FarmPort for Host {
 type ScriptResult<T> = std::result::Result<T, Box<EvalAltResult>>;
 
 fn script_error(error: anyhow::Error) -> Box<EvalAltResult> {
+    if let Some(reason) = error.downcast_ref::<ControlError>() {
+        return Box::new(EvalAltResult::ErrorSystem(String::new(), Box::new(*reason)));
+    }
     format!("{error:#}").into()
+}
+
+fn runtime_error(error: Box<EvalAltResult>) -> anyhow::Error {
+    let reason = match error.unwrap_inner() {
+        EvalAltResult::ErrorSystem(_, cause) => cause.downcast_ref::<ControlError>().copied(),
+        EvalAltResult::ErrorTerminated(reason, _) => reason.clone().try_cast::<ControlError>(),
+        _ => None,
+    };
+    reason.map_or_else(|| anyhow::anyhow!(error.to_string()), anyhow::Error::new)
+}
+
+fn run_error_event(phase: &'static str, error: &anyhow::Error) -> Action {
+    let message = format!("{error:#}");
+    if error.is::<ControlError>() {
+        Action::Log { message }
+    } else {
+        Action::Error { phase, message }
+    }
 }
 fn point(x: INT, y: INT) -> Result<Point> {
     ensure!(
@@ -903,7 +928,10 @@ impl Runtime {
             progress
                 .checkpoint()
                 .err()
-                .map(|e| Dynamic::from(e.to_string()))
+                .map(|error| match error.downcast::<ControlError>() {
+                    Ok(reason) => Dynamic::from(reason),
+                    Err(error) => Dynamic::from(error.to_string()),
+                })
         });
         let h = host.clone();
         engine.register_fn("capture", move || with_host(&h, |h| h.capture()));
@@ -971,6 +999,22 @@ impl Runtime {
             with_host(&h, |h| {
                 ensure!((1..=3).contains(&slot), "NP field slot must be 1..3");
                 BattleDriver { port: h }.attack_np(slot as usize, required)
+            })
+        });
+        let h = host.clone();
+        engine.register_fn("attack_nps", move |slots: rhai::Array, required: bool| {
+            with_host(&h, |h| {
+                let slots = slots
+                    .into_iter()
+                    .map(|slot| {
+                        let slot = slot
+                            .try_cast::<INT>()
+                            .context("NP slot must be an integer")?;
+                        ensure!((1..=3).contains(&slot), "NP field slot must be 1..3");
+                        Ok(slot as usize)
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                BattleDriver { port: h }.attack_nps(&slots, required)
             })
         });
         let h = host.clone();
@@ -1149,10 +1193,7 @@ impl Runtime {
             .map_err(|_| anyhow::anyhow!("host lock poisoned"))?;
         let result = host.run_default_farm();
         if let Err(error) = &result {
-            let _ = host.record(Action::Error {
-                phase: "default_farm",
-                message: format!("{error:#}"),
-            });
+            let _ = host.record(run_error_event("default_farm", error));
         }
         result
     }
@@ -1162,17 +1203,12 @@ impl Runtime {
             let ast = self
                 .engine
                 .optimize_ast(&Scope::new(), ast, OptimizationLevel::Simple);
-            self.engine
-                .run_ast(&ast)
-                .map_err(|error| anyhow::anyhow!(error.to_string()))
+            self.engine.run_ast(&ast).map_err(runtime_error)
         });
         if let Err(error) = &result
             && let Ok(mut host) = self.host.lock()
         {
-            let _ = host.record(Action::Error {
-                phase: "script",
-                message: format!("{error:#}"),
-            });
+            let _ = host.record(run_error_event("script", error));
         }
         result
     }

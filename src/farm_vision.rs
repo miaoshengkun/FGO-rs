@@ -300,3 +300,53 @@ mod tests {
         verify_team_tabs(&vision);
     }
 }
+
+#[cfg(test)]
+mod assassin_tests {
+    use super::*;
+    use crate::battle::RequiredBattleFacts;
+    use std::{path::Path, time::Duration};
+    #[test]
+    fn assassin_live_quest_support_and_opening_are_recognized() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let profile: crate::profile::PartyProfile =
+            serde_json::from_str(include_str!("../profiles/assassin-v1.json")).unwrap();
+        let mut vision = Vision::load(&root.join("assets/templates.json")).unwrap();
+        vision.farm_templates = profile.farm_templates.clone();
+        let control = Control::new(Duration::from_secs(30));
+        let frame = |name| {
+            image::open(root.join(format!("tests/fixtures/live-assassin-{name}.png")))
+                .unwrap()
+                .to_rgba8()
+        };
+        let quest = vision.farm_state(&frame("initial"), &control).unwrap();
+        assert!(quest.event && quest.quest.is_some());
+        let confirm = vision.farm_state(&frame("confirm"), &control).unwrap();
+        assert_eq!(
+            confirm.scene_candidates(),
+            vec![crate::domain::Scene::QuestConfirmation]
+        );
+        let support = vision.farm_state(&frame("support"), &control).unwrap();
+        assert!(support.support && support.rider_tab && support.friend.is_some());
+        let formation = vision.farm_state(&frame("formation"), &control).unwrap();
+        assert!(formation.formation && formation.level120);
+        let opening = vision
+            .battle_state_with_markers_and_facts(
+                &frame("opening"),
+                &control,
+                &profile.required_templates(),
+                RequiredBattleFacts::MARKERS.union(RequiredBattleFacts::SKILLS),
+            )
+            .unwrap();
+        assert!(opening.first_turn && opening.idle());
+        assert!(opening.has_markers(profile.opening_markers.iter().map(String::as_str)));
+        // A level-120 badge alone must never select another servant.
+        let mut wrong = frame("support");
+        for y in 290..325 {
+            for x in 470..580 {
+                wrong.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        assert!(vision.support(&wrong, &control).unwrap().is_none());
+    }
+}

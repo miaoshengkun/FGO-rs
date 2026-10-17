@@ -36,7 +36,7 @@ export component AppWindow inherits Window {
     in-out property <int> battles: 1;
     in-out property <int> apples: 0;
     in-out property <int> apple-index;
-    in-out property <int> max-seconds: 600;
+    in-out property <int> max-seconds: 0;
     in-out property <int> mode-index;
     in-out property <string> maa-library;
     in-out property <string> maa-ocr;
@@ -108,7 +108,7 @@ export component AppWindow inherits Window {
                                 Button { text: "刷新"; enabled: !root.busy && !root.running && !root.offline; clicked => { root.refresh-devices(); } }
                             }
                             Label { text: "任务模式"; }
-                            Picker { model: ["固定位置刷图 · 默认战斗", "Profile / Rhai 脚本"]; current-index <=> root.task-index; enabled: !root.running && !root.busy; selected => { root.picking-quest = false; } }
+                            Picker { model: ["固定位置刷图 · 默认战斗", "Profile / Rhai 脚本", "冠位钻研战[暗匿者]VII"]; current-index <=> root.task-index; enabled: !root.running && !root.busy; selected => { root.picking-quest = false; } }
                             if root.task-index == 0: VerticalLayout {
                                 spacing: 7px;
                                 Label { text: "关卡位置（1280 × 720）"; }
@@ -131,6 +131,10 @@ export component AppWindow inherits Window {
                                 Label { text: "Rhai 脚本"; }
                                 Picker { model: root.scripts; current-index <=> root.script-index; enabled: !root.running; }
                             }
+                            if root.task-index == 2: Text {
+                                text: "1 光之高扬斯卡娅 · 2 助战 · 3 斯忒诺\n自动选择 120 级河上彦斋。\n首回合按专用策略释放技能、御主 1/2 技能，\n斯忒诺宝具 → 助战宝具 → 助战普通卡。\n后续自动使用技能和宝具；助战红→蓝→绿。\n从本关列表、助战、编队或未操作的首回合开始。";
+                                color: #77849b; font-size: 11px; wrap: word-wrap;
+                            }
                             Label { text: "区域 / 运行模式"; }
                             HorizontalBox {
                                 padding: 0px;
@@ -143,8 +147,8 @@ export component AppWindow inherits Window {
                                 VerticalLayout { Label { text: "苹果预算"; } Stepper { minimum: 0; maximum: 999; value <=> root.apples; enabled: !root.running; } }
                             }
                             Picker { model: ["金苹果", "银苹果", "铜苹果"]; current-index <=> root.apple-index; enabled: !root.running; }
-                            Label { text: "最长运行时长（秒，含暂停）"; }
-                            Stepper { minimum: 1; maximum: 86400; step-size: 60; value <=> root.max-seconds; enabled: !root.running; }
+                            Label { text: "总运行时限（秒）· 0 为不限"; }
+                            Stepper { minimum: 0; maximum: 86400; step-size: 60; value <=> root.max-seconds; enabled: !root.running; }
                             Label { text: "识别引擎 · MaaFramework"; }
                             VerticalLayout {
                                 spacing: 7px;

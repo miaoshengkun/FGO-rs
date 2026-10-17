@@ -36,6 +36,9 @@ impl FaceCardPriority {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CardStrategyProfile {
+    /// Optional strict face-card order: support cards first, then these colors.
+    /// Overrides damage/chain scoring, including the order cards are played.
+    pub face_card_color_order: Option<[crate::battle::Color; 3]>,
     /// Original party-slot identities, highest NP priority first. `None` keeps
     /// legacy screen order for profiles created before identity-aware sorting.
     pub noble_phantasm_order: Option<[PartySlot; 6]>,
@@ -56,6 +59,7 @@ pub struct CardStrategyProfile {
 impl Default for CardStrategyProfile {
     fn default() -> Self {
         Self {
+            face_card_color_order: None,
             noble_phantasm_order: None,
             face_card_priority: [
                 FaceCardPriority::SupportCount,
@@ -73,6 +77,12 @@ impl Default for CardStrategyProfile {
 
 impl CardStrategyProfile {
     pub(crate) fn validate(&self, profile_id: &str) -> Result<()> {
+        if let Some(colors) = self.face_card_color_order {
+            ensure!(
+                colors[0] != colors[1] && colors[0] != colors[2] && colors[1] != colors[2],
+                "party profile {profile_id} repeats face-card color"
+            );
+        }
         if let Some(order) = self.noble_phantasm_order {
             let mut party_slots = [false; 6];
             for slot in order {

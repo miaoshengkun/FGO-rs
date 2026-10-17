@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "id": "cn-assassin-grand-vii",
+  "enemy_target": "current",
+  "confirm_skill_use": true,
+  "farm_templates": {
+    "event": "assassin_event",
+    "quest": "assassin_quest_vii",
+    "formation_support": "formation_gensai120",
+    "support_filter": "assassin_filter",
+    "support_tab": "assassin_tab",
+    "support_name": "support_gensai_name",
+    "support_level": "assassin_support_level120"
+  },
+  "cards": {
+    "noble_phantasm_order": [
+      "three",
+      "two",
+      "one",
+      "four",
+      "five",
+      "six"
+    ],
+    "face_card_color_order": [
+      "buster",
+      "arts",
+      "quick"
+    ]
+  },
+  "servants": [
+    {
+      "slot": "one",
+      "atlas_id": 604200
+    },
+    {
+      "slot": "three",
+      "atlas_id": 601000
+    }
+  ],
+  "support_candidates": [
+    {
+      "atlas_id": 605100
+    }
+  ],
+  "opening_markers": [
+    "koyanskaya_slot_1",
+    "gensai_slot_2",
+    "stheno_slot_3",
+    "gensai_level120_slot_2",
+    "assassin_support_slot_2"
+  ],
+  "support_marker": "assassin_support_slot_2",
+  "support_field": "two",
+  "opening_skills_ready": [
+    {
+      "servant": "one",
+      "skill": "one"
+    },
+    {
+      "servant": "one",
+      "skill": "two"
+    },
+    {
+      "servant": "one",
+      "skill": "three"
+    },
+    {
+      "servant": "two",
+      "skill": "one"
+    },
+    {
+      "servant": "two",
+      "skill": "two"
+    },
+    {
+      "servant": "two",
+      "skill": "three"
+    },
+    {
+      "servant": "three",
+      "skill": "one"
+    },
+    {
+      "servant": "three",
+      "skill": "two"
+    },
+    {
+      "servant": "three",
+      "skill": "three"
+    }
+  ]
+}

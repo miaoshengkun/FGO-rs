@@ -1,5 +1,7 @@
 use anyhow::{Result, bail};
 use std::{
+    error::Error,
+    fmt,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -7,6 +9,23 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ControlError {
+    Stopped,
+    TimeLimitReached,
+}
+
+impl fmt::Display for ControlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Stopped => "execution stopped",
+            Self::TimeLimitReached => "execution time limit reached",
+        })
+    }
+}
+
+impl Error for ControlError {}
 
 #[derive(Clone)]
 enum Clock {
@@ -94,10 +113,10 @@ impl Control {
     /// replay timestamps and logical sleeps. This never waits for resume.
     pub fn check_cancel(&self) -> Result<()> {
         if self.stopped.load(Ordering::SeqCst) {
-            bail!("execution stopped");
+            return Err(ControlError::Stopped.into());
         }
         if self.elapsed() >= self.limit {
-            bail!("execution time limit reached");
+            return Err(ControlError::TimeLimitReached.into());
         }
         Ok(())
     }

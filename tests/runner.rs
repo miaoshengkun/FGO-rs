@@ -1,6 +1,7 @@
 use fgo_rs::{
     adb::Adb,
     catalog::Region,
+    control::ControlError,
     farming::{Apple, FixedFarmConfig},
     profile::RIDER_PROFILE_V1,
     replay::{ReplayComparisonMode, compare_event_streams},
@@ -75,6 +76,62 @@ fn read_trace(path: &Path) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect()
+}
+
+#[test]
+fn reaching_the_time_limit_preserves_the_stop_reason_without_a_failure_screenshot() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut config = config(folder.path());
+    config.max_seconds = 1;
+    std::fs::write(&config.script, "capture(); sleep(1000);").unwrap();
+    let trace = config.trace.clone();
+    let run = runner::prepare(config.clone(), config.control(), RunHooks::default()).unwrap();
+    let error = run.run().unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<ControlError>(),
+        Some(&ControlError::TimeLimitReached)
+    );
+    assert!(error.to_string().contains("run stopped"));
+    let records = read_trace(&trace);
+    assert!(records.iter().any(|event| event["action"] == "capture"));
+    assert!(records.iter().all(|event| event["action"] != "error"));
+    assert_eq!(
+        records.last().unwrap()["message"],
+        "execution time limit reached"
+    );
+    assert!(std::fs::read_dir(folder.path()).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("failure-")
+    }));
+}
+
+#[test]
+fn unlimited_run_crosses_old_deadlines_and_still_honors_manual_stop() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut config = config(folder.path());
+    config.max_seconds = 0;
+    config.validate().unwrap();
+    let control = config.control();
+    // Replay advances time without spending two days on a wall-clock test.
+    control.advance_to(Duration::from_secs(172800)).unwrap();
+    std::fs::write(&config.script, "capture(); log(\"after two days\");").unwrap();
+    runner::prepare(config.clone(), control.clone(), RunHooks::default())
+        .unwrap()
+        .run()
+        .unwrap();
+    control.stop();
+    assert_eq!(
+        control
+            .checkpoint()
+            .unwrap_err()
+            .downcast_ref::<ControlError>(),
+        Some(&ControlError::Stopped)
+    );
+    assert_eq!(runner::execution_limit(0), Duration::MAX);
+    assert_eq!(runner::execution_limit(1800), Duration::from_secs(1800));
 }
 
 #[test]

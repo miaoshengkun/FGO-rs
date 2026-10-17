@@ -3,7 +3,7 @@ use crate::{
     adb::Adb,
     battle::Color,
     catalog::{CardType, PartyServantData, Region, SupportServantData, load_profile_servant_data},
-    control::Control,
+    control::{Control, ControlError},
     device::{AdbDevice, Device, ReplayDevice},
     farming::{Apple, FixedFarmConfig},
     profile::PartyProfile,
@@ -109,7 +109,7 @@ pub struct RunConfig {
 
 impl RunConfig {
     pub fn control(&self) -> Control {
-        let limit = Duration::from_secs(self.max_seconds);
+        let limit = execution_limit(self.max_seconds);
         if self.replay.is_some() {
             Control::simulated(limit)
         } else {
@@ -151,10 +151,7 @@ impl RunConfig {
                 || (self.replay_compare.is_none() && self.replay_report.is_none()),
             "comparison options require a replay trace"
         );
-        ensure!(
-            self.max_seconds > 0 && self.max_operations > 0,
-            "invalid execution limits"
-        );
+        ensure!(self.max_operations > 0, "invalid execution limits");
         if let Some(baseline) = &self.replay_trace {
             ensure!(
                 baseline != &self.trace,
@@ -168,6 +165,16 @@ impl RunConfig {
             );
         }
         Ok(())
+    }
+}
+
+/// A zero run budget disables only the overall deadline. Individual action
+/// timeouts and explicit cancellation still apply.
+pub fn execution_limit(seconds: u64) -> Duration {
+    if seconds == 0 {
+        Duration::MAX
+    } else {
+        Duration::from_secs(seconds)
     }
 }
 
@@ -331,6 +338,9 @@ impl PreparedRun {
             require_matching_replay(&report)?;
         }
         if let Err(error) = result {
+            if error.is::<ControlError>() {
+                return Err(error).context("run stopped");
+            }
             let stamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_millis();

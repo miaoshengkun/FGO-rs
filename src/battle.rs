@@ -20,7 +20,7 @@ const PORTRAIT_CHANGE_THRESHOLD: f64 = 0.05;
 // A replacement must stop fading before it can consume a reserve identity.
 const PORTRAIT_STABILITY_THRESHOLD: f64 = 0.001;
 
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Color {
     Arts,
@@ -1817,6 +1817,22 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
         Ok(attacked)
     }
 
+    /// Commit exactly the selected NPs in profile order, then fill with face cards.
+    /// Required NPs are all verified before any card is selected.
+    pub fn attack_nps(&mut self, slots: &[usize], required: bool) -> Result<()> {
+        ensure!(
+            !slots.is_empty() && slots.len() <= 3,
+            "select 1..3 NP slots"
+        );
+        let mut mask = [false; 3];
+        for &slot in slots {
+            ensure!((1..=3).contains(&slot), "NP field slot must be 1..3");
+            ensure!(!mask[slot - 1], "duplicate NP field slot {slot}");
+            mask[slot - 1] = true;
+        }
+        self.attack_with_mask(required, mask, false).map(|_| ())
+    }
+
     pub fn attack_other_nps(&mut self) -> Result<bool> {
         let mut mask = [true; 3];
         mask[self.port.profile().support_field.index()] = false;
@@ -1927,9 +1943,9 @@ impl<P: BattlePort + ?Sized> BattleDriver<'_, P> {
                 && !current.np_blocked[i]
                 && (first_frame.np_glow[i] || current.np_glow[i])
         });
-        if first && !ready.iter().all(|value| *value) {
+        if first && (0..3).any(|i| mask[i] && !ready[i]) {
             self.port.tap(UI_LAYOUT_V1.battle.command_back)?;
-            bail!("opening requires all three noble phantasms, ready={ready:?}");
+            bail!("opening requires selected noble phantasms, mask={mask:?}, ready={ready:?}");
         }
         if probe && !ready.iter().any(|value| *value) {
             self.port.tap(UI_LAYOUT_V1.battle.command_back)?;
@@ -2322,6 +2338,21 @@ pub fn rank_cards_with_party_data(
         faces.len() >= needed,
         "fewer than three usable NP and face cards"
     );
+    if let Some(colors) = strategy.face_card_color_order {
+        let mut faces = faces;
+        faces.sort_by_key(|index| {
+            let support = state.support_cards[*index]
+                || (strategy.infer_unknown_support_cards
+                    && selected_card_owner(*index + 1, state, frontline).is_none());
+            let color = colors
+                .iter()
+                .position(|color| Some(*color) == state.colors[*index])
+                .expect("complete colors and validated color order");
+            (!support, color)
+        });
+        cards.extend(faces.into_iter().take(needed).map(|index| index + 1));
+        return Ok(cards.try_into().expect("NP and face cards total three"));
+    }
     let mut best: Option<(Vec<usize>, FaceCardMetrics)> = None;
     for order in face_card_orders(&faces, needed) {
         let first_color = cards.first().map_or(state.colors[order[0]], |card| {

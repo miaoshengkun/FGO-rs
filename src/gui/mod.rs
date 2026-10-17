@@ -4,7 +4,7 @@ mod state;
 use crate::{
     adb::{Adb, DeviceInfo},
     catalog::Region,
-    control::Control,
+    control::{Control, ControlError},
     device::{AdbDevice, FrameSource, ReplayDevice},
     farming::{Apple, FixedFarmConfig},
     runner::{self, RecognitionConfig, RunConfig, RunHooks},
@@ -58,6 +58,20 @@ enum JobResult {
     Devices(Vec<DeviceInfo>),
     Preview,
     Run,
+    TimeLimitReached,
+}
+
+fn job_result(kind: JobKind, result: Result<JobResult>) -> std::result::Result<JobResult, String> {
+    match result {
+        Err(error)
+            if kind == JobKind::Run
+                && error.downcast_ref::<ControlError>()
+                    == Some(&ControlError::TimeLimitReached) =>
+        {
+            Ok(JobResult::TimeLimitReached)
+        }
+        other => other.map_err(|error| format!("{error:#}")),
+    }
 }
 
 struct Job {
@@ -383,16 +397,24 @@ impl Controller {
         };
         // Fixed farming does not load these files; selection remains available
         // when switching back to the existing Profile/script mode.
-        let script = self
+        let mut script = self
             .scripts
             .get(usize::try_from(ui.get_script_index())?)
             .context("请选择脚本")?
             .clone();
-        let profile = self
+        let mut profile = self
             .profiles
             .get(usize::try_from(ui.get_profile_index())?)
             .context("请选择 Profile")?
             .clone();
+        if ui.get_task_index() == 2 {
+            ensure!(
+                ui.get_region_index() == 0,
+                "暗匿者 VII 任务目前仅适配 CN 界面"
+            );
+            script = self.root.join("scripts/assassin_farm.rhai");
+            profile = self.root.join("profiles/assassin-v1.json");
+        }
         let recognition =
             maa_recognition(ui.get_maa_library().as_str(), ui.get_maa_ocr().as_str())?;
         let region = match ui.get_region_index() {
@@ -479,7 +501,7 @@ impl Controller {
                 work(request, worker_control, mailbox)
             }));
             let result = match result {
-                Ok(result) => result.map_err(|error| format!("{error:#}")),
+                Ok(result) => job_result(kind, result),
                 Err(_) => Err("后台线程异常退出；请查看运行日志".into()),
             };
             let _ = sender.send(result);
@@ -621,6 +643,14 @@ impl Controller {
                 Ok(JobResult::Run) => {
                     ui.set_status("已完成".into());
                     self.log(ui, "任务已完成".into());
+                }
+                Ok(JobResult::TimeLimitReached) => {
+                    ui.set_status("已停止 · 达到时限".into());
+                    self.log(
+                        ui,
+                        "已达到总运行时限（含暂停）；设为 0 可取消时限。专用脚本在战斗中停止后需确认续接位置，勿重复开场技能"
+                            .into(),
+                    );
                 }
                 Err(_) if stopped => {
                     ui.set_status("已停止".into());
@@ -870,6 +900,25 @@ fn user_data_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_run_time_limits_are_normal_stops() {
+        let timeout =
+            || Err(anyhow::Error::new(ControlError::TimeLimitReached).context("run stopped"));
+        assert!(matches!(
+            job_result(JobKind::Run, timeout()),
+            Ok(JobResult::TimeLimitReached)
+        ));
+        assert!(job_result(JobKind::Discover, timeout()).is_err());
+        assert!(job_result(JobKind::Preview, timeout()).is_err());
+        for message in [
+            "execution time limit reached",
+            "timed out: confirming enemy target",
+            "recognition conflict",
+        ] {
+            assert!(job_result(JobKind::Run, Err(anyhow::anyhow!(message))).is_err());
+        }
+    }
+
     #[test]
     fn gui_requires_native_library_and_complete_ocr_before_starting() {
         let folder = tempfile::tempdir().unwrap();

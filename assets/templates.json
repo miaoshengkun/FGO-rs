@@ -46,6 +46,7 @@
   },
   "quest_confirm": {
     "file": "live/quest-confirm.png",
+    "alternatives": ["assassin/quest-confirm.png"],
     "region": {
       "x": 420,
       "y": 95,
@@ -1944,5 +1945,125 @@
     "file": "saber/support-level120.png",
     "region": { "x": 45, "y": 180, "width": 220, "height": 80 },
     "threshold": 0.08
+  },
+  "assassin_quest_vii": {
+    "file": "assassin/assassin_quest_vii.png",
+    "region": {
+      "x": 760,
+      "y": 90,
+      "width": 300,
+      "height": 490
+    },
+    "threshold": 0.012
+  },
+  "assassin_event": {
+    "file": "rider/event.png",
+    "region": {
+      "x": 990,
+      "y": 0,
+      "width": 290,
+      "height": 65
+    },
+    "threshold": 0.08
+  },
+  "assassin_filter": {
+    "file": "assassin/assassin_filter.png",
+    "region": {
+      "x": 470,
+      "y": 85,
+      "width": 65,
+      "height": 80
+    },
+    "threshold": 0.04
+  },
+  "assassin_tab": {
+    "file": "assassin/assassin_tab.png",
+    "region": {
+      "x": 460,
+      "y": 85,
+      "width": 80,
+      "height": 90
+    },
+    "threshold": 0.04
+  },
+  "support_gensai_name": {
+    "file": "assassin/support_gensai_name.png",
+    "region": {
+      "x": 350,
+      "y": 180,
+      "width": 650,
+      "height": 490
+    },
+    "threshold": 0.04
+  },
+  "assassin_support_level120": {
+    "file": "assassin/assassin_support_level120.png",
+    "region": {
+      "x": 65,
+      "y": 175,
+      "width": 280,
+      "height": 515
+    },
+    "threshold": 0.04
+  },
+  "formation_gensai120": {
+    "file": "assassin/formation_gensai120.png",
+    "region": {
+      "x": 235,
+      "y": 518,
+      "width": 90,
+      "height": 40
+    },
+    "threshold": 0.04
+  },
+  "koyanskaya_slot_1": {
+    "file": "assassin/koyanskaya_slot_1.png",
+    "region": {
+      "x": 108,
+      "y": 423,
+      "width": 88,
+      "height": 78
+    },
+    "threshold": 0.04
+  },
+  "gensai_slot_2": {
+    "file": "assassin/gensai_slot_2.png",
+    "region": {
+      "x": 425,
+      "y": 423,
+      "width": 88,
+      "height": 78
+    },
+    "threshold": 0.04
+  },
+  "stheno_slot_3": {
+    "file": "assassin/stheno_slot_3.png",
+    "region": {
+      "x": 743,
+      "y": 423,
+      "width": 88,
+      "height": 78
+    },
+    "threshold": 0.04
+  },
+  "gensai_level120_slot_2": {
+    "file": "assassin/gensai_level120_slot_2.png",
+    "region": {
+      "x": 427,
+      "y": 693,
+      "width": 65,
+      "height": 27
+    },
+    "threshold": 0.04
+  },
+  "assassin_support_slot_2": {
+    "file": "assassin/assassin_support_slot_2.png",
+    "region": {
+      "x": 500,
+      "y": 382,
+      "width": 125,
+      "height": 42
+    },
+    "threshold": 0.04
   }
 }
