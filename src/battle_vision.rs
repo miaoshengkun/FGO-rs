@@ -631,6 +631,7 @@ impl Vision {
                 matcher.frame(),
                 &UI_LAYOUT_V1.battle.enemy_indicators_standard,
                 &present,
+                EnemyLayout::Standard,
             ),
         })
     }
@@ -679,6 +680,7 @@ impl Vision {
                 matcher.frame(),
                 &UI_LAYOUT_V1.battle.enemy_indicators_six,
                 &present,
+                EnemyLayout::Six,
             ),
         })
     }
@@ -830,6 +832,7 @@ fn selected_enemy(
     frame: &RgbaImage,
     regions: &[crate::vision::Rect],
     present: &[bool],
+    layout: EnemyLayout,
 ) -> Option<EnemySlot> {
     let mut ranked: Vec<_> = regions
         .iter()
@@ -837,6 +840,9 @@ fn selected_enemy(
         .enumerate()
         .filter(|(_, (_, present))| **present)
         .map(|(index, (region, _))| {
+            if layout == EnemyLayout::Standard {
+                return (index, usize::from(standard_enemy_highlight(frame, *region)));
+            }
             let mut blue = 0;
             for y in region.y..region.y + region.height {
                 for x in region.x..region.x + region.width {
@@ -849,8 +855,48 @@ fn selected_enemy(
         .collect();
     ranked.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
     let (index, score) = *ranked.first()?;
-    let confirmed = ranked.len() == 1 || (score >= 100 && score >= ranked[1].1.saturating_mul(2));
+    let confirmed = ranked.len() == 1
+        || match layout {
+            EnemyLayout::Standard => score == 1 && ranked[1].1 == 0,
+            EnemyLayout::Six => score >= 100 && score >= ranked[1].1.saturating_mul(2),
+        };
     confirmed.then(|| EnemySlot::try_from(index + 1).expect("fixed enemy slots"))
+}
+
+fn standard_enemy_highlight(frame: &RgbaImage, region: Rect) -> bool {
+    // The standard class badge's selection glow follows a diamond centered
+    // at (40, 43) within this ROI. Require saturated blue along every visible
+    // edge, with a contrasting icon inside; moving blue skies are not a target
+    // indicator, even when they contain more blue pixels than the real glow.
+    let mut edges = [(0usize, 0usize); 4];
+    let (mut inner_blue, mut inner_total) = (0usize, 0usize);
+    for y in 0..region.height {
+        for x in 0..region.width {
+            let radius = x.abs_diff(40) + y.abs_diff(43);
+            if radius > 44 || (34..40).contains(&radius) {
+                continue;
+            }
+            let pixel = frame.get_pixel(region.x + x, region.y + y);
+            let blue = usize::from(
+                pixel[2] > 120
+                    && pixel[2] as i16 > pixel[0] as i16 + 35
+                    && pixel[2] as i16 > pixel[1] as i16 + 35,
+            );
+            if radius <= 33 {
+                inner_blue += blue;
+                inner_total += 1;
+            } else {
+                let quadrant = usize::from(y > 43) * 2 + usize::from(x > 40);
+                edges[quadrant].0 += blue;
+                edges[quadrant].1 += 1;
+            }
+        }
+    }
+    edges
+        .iter()
+        .all(|(blue, total)| *total > 0 && blue * 2 >= *total)
+        && inner_total > 0
+        && inner_blue * 5 < inner_total
 }
 
 fn portrait_fingerprint(frame: &RgbaImage, region: crate::vision::Rect) -> PortraitFingerprint {
@@ -1142,6 +1188,89 @@ mod reflow_tests {
         assert_eq!(
             state.np_percent.map(|np| np.value()),
             [Some(39), Some(74), Some(137)]
+        );
+    }
+
+    fn sky_target_frame(name: &str) -> RgbaImage {
+        image::open(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(name),
+        )
+        .unwrap()
+        .to_rgba8()
+    }
+
+    #[test]
+    fn standard_enemy_selection_ignores_blue_sky_after_target_switch() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let vision = Vision::load(&root.join("assets/templates.json")).unwrap();
+        for (file, selected) in [
+            ("live-enemy-target-sky-before.png", EnemySlot::Three),
+            ("live-enemy-target-sky-selected.png", EnemySlot::One),
+            ("live-enemy-target-sky-clouds.png", EnemySlot::One),
+        ] {
+            let state = vision
+                .battle_state_with_request(
+                    &sky_target_frame(file),
+                    &Control::new(Duration::from_secs(10)),
+                    &[],
+                    BattleObservationRequest::new(
+                        RequiredBattleFacts::ENEMIES,
+                        &[Scene::BattleTurn],
+                    ),
+                )
+                .unwrap();
+            assert!(state.idle(), "{file}");
+            assert_eq!(state.enemy_layout, Some(EnemyLayout::Standard), "{file}");
+            assert_eq!(state.selected_enemy, Some(selected), "{file}");
+            assert_eq!(
+                state.enemies.map(|enemy| enemy.map(|enemy| enemy.hp)),
+                [Some(475_056), None, Some(40_748), None, None, None],
+                "{file}"
+            );
+        }
+    }
+
+    #[test]
+    fn standard_enemy_selection_requires_an_unambiguous_highlight() {
+        let before = sky_target_frame("live-enemy-target-sky-before.png");
+        let mut selected = sky_target_frame("live-enemy-target-sky-selected.png");
+        let regions = &UI_LAYOUT_V1.battle.enemy_indicators_standard;
+        let present = [true, false, true];
+        let first = regions[0];
+        let third = regions[2];
+        let highlight =
+            image::imageops::crop_imm(&selected, first.x, first.y, first.width, first.height)
+                .to_image();
+
+        // Both surviving enemies have a highlight: never guess a target.
+        selected.copy_from(&highlight, third.x, third.y).unwrap();
+        assert_eq!(
+            selected_enemy(&selected, regions, &present, EnemyLayout::Standard),
+            None
+        );
+
+        // Both highlights are absent, but blue sky remains around enemy 3.
+        let neutral =
+            image::imageops::crop_imm(&before, first.x, first.y, first.width, first.height)
+                .to_image();
+        let mut no_highlight = sky_target_frame("live-enemy-target-sky-clouds.png");
+        no_highlight.copy_from(&neutral, first.x, first.y).unwrap();
+        assert_eq!(
+            selected_enemy(&no_highlight, regions, &present, EnemyLayout::Standard),
+            None
+        );
+
+        // A solid blue patch cannot substitute for a class badge and its rim.
+        for y in first.y..first.y + first.height {
+            for x in first.x..first.x + first.width {
+                no_highlight.put_pixel(x, y, image::Rgba([0, 80, 255, 255]));
+            }
+        }
+        assert_eq!(
+            selected_enemy(&no_highlight, regions, &present, EnemyLayout::Standard),
+            None
         );
     }
 }

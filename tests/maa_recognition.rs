@@ -611,6 +611,42 @@ fn runtime_maa_numbers_preserve_real_values_empty_slots_and_unknowns() {
 }
 
 #[test]
+#[ignore = "requires FGO_MAA_LIBRARY and FGO_MAA_OCR_MODEL; verifies target switching against blue sky"]
+fn standard_enemy_target_switch_with_native_recognition() {
+    use fgo_rs::{
+        battle::EnemyLayout,
+        domain::{EnemySlot, Scene},
+    };
+    let model =
+        PathBuf::from(std::env::var_os("FGO_MAA_OCR_MODEL").expect("set FGO_MAA_OCR_MODEL"));
+    let mut vision = Vision::load(&root().join("assets/templates.json")).unwrap();
+    vision.set_maa_backend(backend(Some(&model))).unwrap();
+    let control = Control::new(Duration::from_secs(30));
+    for (file, selected) in [
+        ("live-enemy-target-sky-before.png", EnemySlot::Three),
+        ("live-enemy-target-sky-selected.png", EnemySlot::One),
+        ("live-enemy-target-sky-clouds.png", EnemySlot::One),
+    ] {
+        let state = vision
+            .battle_state_with_request(
+                &frame(file),
+                &control,
+                &[],
+                BattleObservationRequest::new(RequiredBattleFacts::ENEMIES, &[Scene::BattleTurn]),
+            )
+            .unwrap();
+        assert!(state.idle(), "{file}");
+        assert_eq!(state.enemy_layout, Some(EnemyLayout::Standard), "{file}");
+        assert_eq!(state.selected_enemy, Some(selected), "{file}");
+        assert_eq!(
+            state.enemies.map(|enemy| enemy.map(|enemy| enemy.hp)),
+            [Some(475_056), None, Some(40_748), None, None, None],
+            "{file}"
+        );
+    }
+}
+
+#[test]
 #[ignore = "requires FGO_MAA_LIBRARY; verifies turn fades preserve live Saber identities"]
 fn saber_turn_portrait_fade_with_native_recognition() {
     let mut vision = Vision::load(&root().join("assets/templates.json")).unwrap();
